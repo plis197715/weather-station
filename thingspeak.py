@@ -52,23 +52,19 @@ class ThingspeakAcc():
     def update_channel(self, field_data):
         
         #Create POST data
-        data_to_send = {}
-        data_to_send['key'] = self.api_key
-        
-        for key, value in sorted(field_data.items()):
-            data_to_send['field'+str(key)] = value
-                    
-        params = urllib.urlencode(data_to_send)
+        field_data['key'] = self.api_key
+    
+        params = urllib.urlencode(field_data)
         headers = {'Content-type': 'application/x-www-form-urlencoded',
                     'Accept': 'text/plain'}
-                    
+
         conn = httplib.HTTPConnection(self.host_addr)
         conn.request('POST', '/update', params, headers)
         response = conn.getresponse()
 
         data = response.read()
         conn.close()
-        
+
         return response
 
  
