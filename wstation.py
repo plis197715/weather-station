@@ -116,6 +116,7 @@ def main():
     rrdtool_enable_update        = True
     
     sensors                      = {}
+    sensor_data                  = []
     rrd_data_sources             = []
     rows                         = 0
 
@@ -372,13 +373,24 @@ def main():
   
             # --- Send data to thingspeak ---
             if thingspeak_enable_update:
-                #Create dictionary with field as key and value
-                sensor_data = {}
+                #Create dictionary with field values and time stamp
+                this_loop_data = {"created_at": "{:%Y-%m-%dT%H:%M:%S-00:00}".format(loop_start_time)}
                 for key, value in sorted(sensors.items(), key=lambda e: e[1][0]):
-                    sensor_data[value[s.TS_FIELD]] = value[s.VALUE]
-                response = thingspeak_acc.update_channel(sensor_data)
+                    this_loop_data['field'+str(value[s.TS_FIELD])] = value[s.VALUE]
+                sensor_data.append(this_loop_data)
+                
+                # Loop for all data stack
+                send_attempt = 0
+                while sensor_data and send_attempt < 3:
+                    response = thingspeak_acc.update_channel(sensor_data[-1])
+                    if response.reason == 'OK':
+                        sensor_data.pop()
+                    else:
+                        send_attempt += 1
+   
                 if screen_output:
                     print('\t' + response.reason),
+ 
             elif screen_output:
                 print('\tN/A'),
 
