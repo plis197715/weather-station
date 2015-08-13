@@ -115,7 +115,7 @@ def main():
     door_sensor_enable           = True
     rrdtool_enable_update        = True
     
-    sensors                      = {}
+    sensors                      = []
     rrd_data_sources             = []
     rrd_set                      = []
     rows                         = 0
@@ -148,68 +148,58 @@ def main():
     
    # --- Set up outside temperature sensor ---
     if out_sensor_enable:
+
         #Add to sensor list
-        sensors[s.OUT_TEMP_NAME] = [0,0,0]
-        sensors[s.OUT_TEMP_NAME][s.TS_FIELD] = s.OUT_TEMP_TS_FIELD 
-        sensors[s.OUT_TEMP_NAME][s.VALUE] = 0
-        sensors[s.OUT_TEMP_NAME][s.UNIT] = s.OUT_TEMP_UNIT
+        sensors[s.OUT_TEMP_NAME] = sensor(s.OUT_TEMP_NAME, 
+                                            s.OUT_TEMP_TS_FIELD, 
+                                            s.OUT_TEMP_UNIT,
+                                            s.OUT_TEMP_MIN,
+                                            s.OUT_TEMP_MAX)
         
         #Prepare RRD data sources
         if rrdtool_enable_update:
-            rrd_data_sources += ['DS:' + s.OUT_TEMP_NAME.replace(' ','_') + 
-                                    ':' + s.OUT_TEMP_TYPE + 
-                                    ':' + str(s.RRDTOOL_HEARTBEAT*s.UPDATE_RATE) + 
-                                    ':' + str(s.OUT_TEMP_MIN) + 
-                                    ':' + str(s.OUT_TEMP_MAX)]
-
+            rrd_data_sources += sensors[s.OUT_TEMP_NAME].ds_str(s.OUT_TEMP_TYPE, 
+                                                                s.RRDTOOL_HEARTBEAT*s.UPDATE_RATE)
 
     # --- Set up inside temperature sensor ---
     if in_sensor_enable:
         #Add to sensor list
-        sensors[s.IN_TEMP_NAME] = [0,0,0]
-        sensors[s.IN_TEMP_NAME][s.TS_FIELD] = s.IN_TEMP_TS_FIELD 
-        sensors[s.IN_TEMP_NAME][s.VALUE] = 0
-        sensors[s.IN_TEMP_NAME][s.UNIT] = s.IN_TEMP_UNIT
-        sensors[s.IN_HUM_NAME] = [0,0,0]
-        sensors[s.IN_HUM_NAME][s.TS_FIELD] = s.IN_HUM_TS_FIELD 
-        sensors[s.IN_HUM_NAME][s.VALUE] = 0
-        sensors[s.IN_HUM_NAME][s.UNIT] = s.IN_HUM_UNIT
+        sensors[s.IN_TEMP_NAME] = sensor(s.IN_TEMP_NAME, 
+                                            s.IN_TEMP_TS_FIELD, 
+                                            s.IN_TEMP_UNIT,
+                                            s.IN_TEMP_MIN,
+                                            s.IN_TEMP_MAX)
+        sensors[s.IN_TEMP_NAME] = sensor(s.IN_HUM_TYPE, 
+                                            s.IN_HUM_TS_FIELD, 
+                                            s.IN_HUM_UNIT,
+                                            s.IN_HUM_MIN,
+                                            s.IN_HUM_MAX)
         
         #Set up hardware
         DHT22_sensor = DHT22.sensor(pi, s.IN_SENSOR_PIN)
         
         #Prepare RRD data sources
         if rrdtool_enable_update:
-            rrd_data_sources += ['DS:' + s.IN_TEMP_NAME.replace(' ','_') + 
-                                    ':' + s.IN_TEMP_TYPE + 
-                                    ':' + str(s.RRDTOOL_HEARTBEAT*s.UPDATE_RATE) + 
-                                    ':' + str(s.IN_TEMP_MIN) + 
-                                    ':' + str(s.IN_TEMP_MAX),    
-                                'DS:' + s.IN_HUM_NAME.replace(' ','_') + 
-                                    ':' + s.IN_HUM_TYPE + 
-                                    ':' + str(s.RRDTOOL_HEARTBEAT*s.UPDATE_RATE) + 
-                                    ':' + str(s.IN_HUM_MIN) + 
-                                    ':' + str(s.IN_HUM_MAX)]
-
+            rrd_data_sources += sensors[s.IN_TEMP_NAME].ds_str(s.IN_TEMP_TYPE, 
+                                                                s.RRDTOOL_HEARTBEAT*s.UPDATE_RATE)
+            rrd_data_sources += sensors[s.IN_HUM_NAME].ds_str(s.IN_HUM_TYPE, 
+                                                                s.RRDTOOL_HEARTBEAT*s.UPDATE_RATE)
     
     # --- Set up door sensor ---
     if door_sensor_enable:
         #Add to sensor list
-        sensors[s.DOOR_NAME] = [0,0,0]
-        sensors[s.DOOR_NAME][s.TS_FIELD] = s.DOOR_TS_FIELD 
-        sensors[s.DOOR_NAME][s.VALUE] = 0
-        sensors[s.DOOR_NAME][s.UNIT] = s.DOOR_UNIT
-        
+        sensors[s.DOOR_NAME] = sensor(s.IN_HUM_TYPE, 
+                                        s.DOOR_TS_FIELD, 
+                                        s.DOOR_UNIT,
+                                        s.DOOR_MIN,
+                                        s.DOOR_MAX)
         #Set up hardware
         pi.set_mode(s.DOOR_SENSOR_PIN, pigpio.INPUT)
         
         #Prepare RRD data sources
         if rrdtool_enable_update:
-            rrd_data_sources += ['DS:' + s.DOOR_NAME.replace(' ','_') + 
-                                    ':' + s.DOOR_TYPE + 
-                                    ':' + str(s.RRDTOOL_HEARTBEAT*s.UPDATE_RATE) + 
-                                    ':' + str(s.DOOR_MIN) + 
-                                    ':' + str(s.DOOR_MAX)]
+            rrd_data_sources += sensors[s.DOOR_NAME].ds_str(s.DOOR_TYPE, 
+                                                            s.RRDTOOL_HEARTBEAT*s.UPDATE_RATE)
 
 
     # --- Set up rain sensor ---
@@ -220,15 +210,16 @@ def main():
         last_data_values = []
         
         #Add to sensor list
-        sensors[s.PRECIP_RATE_NAME] = [0,0,0]
-        sensors[s.PRECIP_RATE_NAME][s.TS_FIELD] = s.PRECIP_RATE_TS_FIELD 
-        sensors[s.PRECIP_RATE_NAME][s.VALUE] = 0
-        sensors[s.PRECIP_RATE_NAME][s.UNIT] = s.PRECIP_RATE_UNIT
-        sensors[s.PRECIP_ACCU_NAME] = [0,0,0]
-        sensors[s.PRECIP_ACCU_NAME][s.TS_FIELD] = s.PRECIP_ACCU_TS_FIELD 
-        sensors[s.PRECIP_ACCU_NAME][s.VALUE] = 0
-        sensors[s.PRECIP_ACCU_NAME][s.UNIT] = s.PRECIP_ACCU_UNIT
-        
+        sensors[s.PRECIP_RATE_NAME] = sensor(s.PRECIP_RATE_NAME, 
+                                                s.PRECIP_RATE_TS_FIELD, 
+                                                s.PRECIP_RATE_UNIT,
+                                                s.PRECIP_RATE_MIN,
+                                                s.PRECIP_RATE_MAX)
+        sensors[s.PRECIP_ACCU_NAME] = sensor(s.PRECIP_ACCU_NAME, 
+                                                s.PRECIP_ACCU_TS_FIELD, 
+                                                s.PRECIP_ACCU_UNIT,
+                                                s.PRECIP_ACCU_MIN,
+                                                s.PRECIP_ACCU_MAX)
         #Set up rain gauge hardware
         pi.set_mode(s.PRECIP_SENSOR_PIN, pigpio.INPUT)
         rain_gauge = pi.callback(s.PRECIP_SENSOR_PIN, pigpio.FALLING_EDGE, 
@@ -236,16 +227,10 @@ def main():
         
         #Prepare RRD data sources
         if rrdtool_enable_update:
-            rrd_data_sources += ['DS:' + s.PRECIP_RATE_NAME.replace(' ','_') + 
-                                    ':' + s.PRECIP_RATE_TYPE + 
-                                    ':' + str(s.RRDTOOL_HEARTBEAT*s.UPDATE_RATE) + 
-                                    ':' + str(s.PRECIP_RATE_MIN) + 
-                                    ':' + str(s.PRECIP_RATE_MAX),
-                                'DS:' + s.PRECIP_ACCU_NAME.replace(' ','_') + 
-                                    ':' + s.PRECIP_ACCU_TYPE + 
-                                    ':' + str(s.RRDTOOL_HEARTBEAT*s.UPDATE_RATE) + 
-                                    ':' + str(s.PRECIP_ACCU_MIN) + 
-                                    ':' + str(s.PRECIP_ACCU_MAX)]                                    
+            rrd_data_sources += sensors[s.PRECIP_RATE_NAME].ds_str(s.PRECIP_RATE_TYPE, 
+                                                                    s.RRDTOOL_HEARTBEAT*s.UPDATE_RATE)
+            rrd_data_sources += sensors[s.PRECIP_ACCU_NAME].ds_str(s.PRECIP_ACCU_TYPE, 
+                                                                    s.RRDTOOL_HEARTBEAT*s.UPDATE_RATE)
 
 
     # --- Set up thingspeak account ---
@@ -320,7 +305,7 @@ def main():
             if rain_sensor_enable:
                 
                 #Calculate precip rate and reset it
-                sensors[s.PRECIP_RATE_NAME][s.VALUE] = precip_tick_count * s.PRECIP_TICK_MEASURE
+                sensors[s.PRECIP_RATE_NAME].update_value(precip_tick_count * s.PRECIP_TICK_MEASURE)
                 precip_tick_count = 0
    
                 #Get previous precip acc'ed value - prioritize local over web value
@@ -364,12 +349,12 @@ def main():
                 time_since_last_reset = (loop_start_time - last_reset).total_seconds()
                 time_since_last_feed_entry = time.mktime(loop_start_time.timetuple()) - last_entry_time
                 if time_since_last_feed_entry > time_since_last_reset:
-                    sensors[s.PRECIP_ACCU_NAME][s.VALUE] = 0.00
+                    sensors[s.PRECIP_ACCU_NAME].update_value(0.00)
                 else:
-                    sensors[s.PRECIP_ACCU_NAME][s.VALUE] = last_precip_accu
+                    sensors[s.PRECIP_ACCU_NAME].update_value(last_precip_accu)
                 
                 #Add previous precip. acc'ed value to current precip. rate
-                sensors[s.PRECIP_ACCU_NAME][s.VALUE] += sensors[s.PRECIP_RATE_NAME][s.VALUE]
+                sensors[s.PRECIP_ACCU_NAME].update_value(last_precip_accu + sensors[s.PRECIP_RATE_NAME].value)
                 
             else:
                 # If rrdtool is disable just increment task time by rate
@@ -378,42 +363,42 @@ def main():
 
             # --- Check door status ---
             if door_sensor_enable:
-                sensors[s.DOOR_NAME][s.VALUE] = pi.read(s.DOOR_SENSOR_PIN)
+                sensors[s.DOOR_NAME].update_value(pi.read(s.DOOR_SENSOR_PIN))
 
 
             # --- Get outside temperature ---
             if out_sensor_enable:
-                sensors[s.OUT_TEMP_NAME][s.VALUE] = DS18B20.get_temp(
-                                                            s.W1_DEVICE_PATH, 
-                                                            s.OUT_TEMP_SENSOR_REF)
+                sensors[s.OUT_TEMP_NAME].update_value(DS18B20.get_temp(
+                                                        s.W1_DEVICE_PATH, 
+                                                        s.OUT_TEMP_SENSOR_REF))
 
    
             # --- Get inside temperature and humidity ---
             if in_sensor_enable:
                 DHT22_sensor.trigger()
                 time.sleep(0.2)  #Do not over poll DHT22
-                sensors[s.IN_TEMP_NAME][s.VALUE] = DHT22_sensor.temperature()
-                sensors[s.IN_HUM_NAME][s.VALUE]  = DHT22_sensor.humidity()
+                sensors[s.IN_TEMP_NAME].update_value(DHT22_sensor.temperature())
+                sensors[s.IN_HUM_NAME].update_value(DHT22_sensor.humidity())
 
    
             # --- Display data on screen ---
             if screen_output:
-                for key, value in sorted(sensors.items(), key=lambda e: e[1][0]):
-                    if key == s.DOOR_NAME:
+                for i in sorted(sensors):
+                    if sensors[i].name == s.DOOR_NAME:
                         if value[s.VALUE]:
                             print('\tOPEN\t'),
                         else:
                             print('\tCLOSED\t'),
                     else:
-                        print('\t{:2.2f} '.format(value[s.VALUE]) + value[s.UNIT]),
+                        print('\t{:2.2f} '.format(sensors[i].value + sensors[i].unit),
 
   
             # --- Send data to thingspeak ---
             if thingspeak_enable_update:
                 #Create dictionary with field as key and value
                 sensor_data = {}
-                for key, value in sorted(sensors.items(), key=lambda e: e[1][0]):
-                    sensor_data[value[s.TS_FIELD]] = value[s.VALUE]
+                for i in sorted(sensors):
+                    sensor_data[sensors[i].number] = sensors[i].value
                 response = thingspeak_acc.update_channel(sensor_data)
                 if screen_output:
                     print('\t' + response.reason),
@@ -424,8 +409,8 @@ def main():
             # --- Add data to RRD ---
             if rrdtool_enable_update:
                 sensor_data = []
-                for key, value in sorted(sensors.items(), key=lambda e: e[1][0]):
-                    sensor_data.append(value[s.VALUE])
+                for i in sorted(sensors):
+                    sensor_data.append(sensors[i].value)
                 sensor_data = [str(i) for i in sensor_data]
                 rrdtool.update(s.RRDTOOL_RRD_FILE, 'N:' + ':'.join(sensor_data))
                 if screen_output:
