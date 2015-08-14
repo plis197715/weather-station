@@ -386,7 +386,7 @@ def main():
             if screen_output:
                 for i in sorted(sensors):
                     if sensors[i].name == s.DOOR_NAME:
-                        if value[s.VALUE]:
+                        if sensors[i].value:
                             print('\tOPEN\t'),
                         else:
                             print('\tCLOSED\t'),
