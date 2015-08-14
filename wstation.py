@@ -151,10 +151,8 @@ def main():
     if out_sensor_enable:
 
         #Add to sensor list
-        sensors[s.OUT_TEMP_NAME] = sensor(s.OUT_TEMP_NAME, 
-                                            s.OUT_TEMP_TS_FIELD, 
-                                            s.OUT_TEMP_UNIT,
-                                            s.OUT_TEMP_MIN,
+        sensors[s.OUT_TEMP_NAME] = sensor(s.OUT_TEMP_NAME, s.OUT_TEMP_TS_FIELD, 
+                                            s.OUT_TEMP_UNIT, s.OUT_TEMP_MIN,
                                             s.OUT_TEMP_MAX)
         
         #Prepare RRD data sources
@@ -165,15 +163,11 @@ def main():
     # --- Set up inside temperature sensor ---
     if in_sensor_enable:
         #Add to sensor list
-        sensors[s.IN_TEMP_NAME] = sensor(s.IN_TEMP_NAME, 
-                                            s.IN_TEMP_TS_FIELD, 
-                                            s.IN_TEMP_UNIT,
-                                            s.IN_TEMP_MIN,
+        sensors[s.IN_TEMP_NAME] = sensor(s.IN_TEMP_NAME, s.IN_TEMP_TS_FIELD, 
+                                            s.IN_TEMP_UNIT, s.IN_TEMP_MIN,
                                             s.IN_TEMP_MAX)
-        sensors[s.IN_TEMP_NAME] = sensor(s.IN_HUM_TYPE, 
-                                            s.IN_HUM_TS_FIELD, 
-                                            s.IN_HUM_UNIT,
-                                            s.IN_HUM_MIN,
+        sensors[s.IN_TEMP_NAME] = sensor(s.IN_HUM_TYPE, s.IN_HUM_TS_FIELD, 
+                                            s.IN_HUM_UNIT, s.IN_HUM_MIN,
                                             s.IN_HUM_MAX)
         
         #Set up hardware
@@ -189,11 +183,8 @@ def main():
     # --- Set up door sensor ---
     if door_sensor_enable:
         #Add to sensor list
-        sensors[s.DOOR_NAME] = sensor(s.IN_HUM_TYPE, 
-                                        s.DOOR_TS_FIELD, 
-                                        s.DOOR_UNIT,
-                                        s.DOOR_MIN,
-                                        s.DOOR_MAX)
+        sensors[s.DOOR_NAME] = sensor(s.IN_HUM_TYPE, s.DOOR_TS_FIELD, s.DOOR_UNIT,
+                                        s.DOOR_MIN, s.DOOR_MAX)
         #Set up hardware
         pi.set_mode(s.DOOR_SENSOR_PIN, pigpio.INPUT)
         
@@ -211,15 +202,11 @@ def main():
         last_data_values = []
         
         #Add to sensor list
-        sensors[s.PRECIP_RATE_NAME] = sensor(s.PRECIP_RATE_NAME, 
-                                                s.PRECIP_RATE_TS_FIELD, 
-                                                s.PRECIP_RATE_UNIT,
-                                                s.PRECIP_RATE_MIN,
+        sensors[s.PRECIP_RATE_NAME] = sensor(s.PRECIP_RATE_NAME, s.PRECIP_RATE_TS_FIELD, 
+                                                s.PRECIP_RATE_UNIT, s.PRECIP_RATE_MIN,
                                                 s.PRECIP_RATE_MAX)
-        sensors[s.PRECIP_ACCU_NAME] = sensor(s.PRECIP_ACCU_NAME, 
-                                                s.PRECIP_ACCU_TS_FIELD, 
-                                                s.PRECIP_ACCU_UNIT,
-                                                s.PRECIP_ACCU_MIN,
+        sensors[s.PRECIP_ACCU_NAME] = sensor(s.PRECIP_ACCU_NAME, s.PRECIP_ACCU_TS_FIELD, 
+                                                s.PRECIP_ACCU_UNIT, s.PRECIP_ACCU_MIN,
                                                 s.PRECIP_ACCU_MAX)
         #Set up rain gauge hardware
         pi.set_mode(s.PRECIP_SENSOR_PIN, pigpio.INPUT)
@@ -409,10 +396,7 @@ def main():
    
             # --- Add data to RRD ---
             if rrdtool_enable_update:
-                sensor_data = []
-                for i in sorted(sensors):
-                    sensor_data.append(sensors[i].value)
-                sensor_data = [str(i) for i in sensor_data]
+                sensor_data = [str(sensors[i].value) for i in sorted(sensors)]
                 rrdtool.update(s.RRDTOOL_RRD_FILE, 'N:' + ':'.join(sensor_data))
                 if screen_output:
                     print('\t\tOK')
