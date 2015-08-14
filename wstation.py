@@ -118,6 +118,7 @@ def main():
     sensors                      = {}
     sensor_data                  = []
     rrd_data_sources             = []
+    rrd_set                      = []
     rows                         = 0
 
     # --- Check and action passed arguments ---
@@ -247,7 +248,22 @@ def main():
                                     ':' + str(s.PRECIP_ACCU_MIN) + 
                                     ':' + str(s.PRECIP_ACCU_MAX)]                                    
 
- 
+
+    # --- Set up thingspeak account ---
+    if thingspeak_enable_update:
+        #Set up inital values for variables
+        thingspeak_write_api_key     = ''
+        
+        #Set up thingspeak account
+        thingspeak_acc = thingspeak.ThingspeakAcc(s.THINGSPEAK_HOST_ADDR,
+                                                    s.THINGSPEAK_API_KEY_FILENAME,
+                                                    s.THINGSPEAK_CHANNEL_ID) 
+
+
+    # --- Set next loop time ---
+    next_reading = time.time() + s.UPDATE_RATE
+    
+    
     # --- Set up rrd data and tool ---
     if rrdtool_enable_update:
         #Set up inital values for variables
@@ -258,38 +274,27 @@ def main():
             rra_files.append('RRA:' + s.RRDTOOL_RRA[i] + ':0.5:' + 
                                 str((s.RRDTOOL_RRA[i+1]*60)/s.UPDATE_RATE) + ':' + 
                                 str(((s.RRDTOOL_RRA[i+2])*24*60)/s.RRDTOOL_RRA[i+1]))
-                                
+ 
         #Prepare RRD set
-        rrd_set = [s.RRDTOOL_RRD_FILE, '--step', str(s.UPDATE_RATE), '--start', 'now']
+        rrd_set = [s.RRDTOOL_RRD_FILE, 
+                    '--step', str(s.UPDATE_RATE), 
+                    '--start', str(next_reading)]
         rrd_set +=  rrd_data_sources + rra_files
         
         #Create RRD files if none exist
         if not os.path.exists(s.RRDTOOL_RRD_FILE):
             rrdtool.create(rrd_set)
-
-    
-    #--- Set up thingspeak account ---
-    if thingspeak_enable_update:
-        #Set up inital values for variables
-        thingspeak_write_api_key     = ''
-        
-        #Set up thingspeak account
-        thingspeak_acc = thingspeak.ThingspeakAcc(s.THINGSPEAK_HOST_ADDR,
-                                                    s.THINGSPEAK_API_KEY_FILENAME,
-                                                    s.THINGSPEAK_CHANNEL_ID)
-
-
-    # --- Set next loop time ---
-    next_reading = time.time()
+        else:
+            #Fetch data from round robin database & extract next entry time to sync loop
+            data_values = rrdtool.fetch(s.RRDTOOL_RRD_FILE, 'LAST', 
+                                        '-s', str(s.UPDATE_RATE * -2))
+            next_reading  = data_values[0][1]
 
 
     # ========== Timed Loop ==========
     try:
         while True:
             
-            #Get loop start time
-            loop_start_time = datetime.datetime.now()
-    
             # --- Print loop start time ---
             if screen_output:
                 rows -= 1
@@ -299,7 +304,17 @@ def main():
                                                     thingspeak_acc.api_key,
                                                     rrdtool_enable_update,
                                                     rrd_set)
-                print(loop_start_time.strftime('%Y-%m-%d\t%H:%M:%S')),
+                print(time.strftime('%Y-%m-%d\t%H:%M:%S', time.gmtime(next_reading))),
+
+
+            # --- Delay to give update rate ---
+            sleep_length = next_reading - time.time()
+            if sleep_length > 0:
+                time.sleep(sleep_length)
+
+
+            #Get loop start time
+            loop_start_time = datetime.datetime.now()
 
 
             # --- Get rain fall measurement ---
@@ -312,10 +327,29 @@ def main():
                 #Get previous precip acc'ed value - prioritize local over web value
                 if rrdtool_enable_update:
                     data_values = []
+                    last_precip_accu = None
+                    tuple_location = 0
+                    
+                    #Fetch data from round robin database
                     data_values = rrdtool.fetch(s.RRDTOOL_RRD_FILE, 'LAST', 
                                                 '-s', str(s.UPDATE_RATE * -2))
-                    last_entry_time = data_values[0][1]
-                    last_precip_accu = data_values[2][-1][data_values[1].index(s.PRECIP_ACCU_NAME)]
+
+                    #Sync task time to rrd database
+                    next_reading  = data_values[0][1]
+                    
+                    #Extract time and precip acc value from fetched tuple
+                    data_location = data_values[1].index(s.PRECIP_ACCU_NAME.replace(' ','_'))
+                    while last_precip_accu is None or -tuple_location > len(data_values[2]):
+                        tuple_location -= 1
+                        last_precip_accu = data_values[2][tuple_location][data_location]
+                        
+                    last_entry_time = data_values[0][1] + (tuple_location * s.UPDATE_RATE)
+                    
+                    #If no data present, set it to 0
+                    if last_precip_accu is None:
+                        last_precip_accu = 0.00
+                        
+                #Get value from thingspeak if rrdtool is disabled
                 elif thingspeak_enable_update:
                     last_data_values = thingspeak_acc.get_last_feed_entry()
                     last_entry_time = last_data_values["created at"]
@@ -329,14 +363,18 @@ def main():
     
                 #Reset precip acc    
                 time_since_last_reset = (loop_start_time - last_reset).total_seconds()
-                time_since_last_feed_entry = time.mktime(loop_start_time.timetuple()) -  last_entry_time
+                time_since_last_feed_entry = time.mktime(loop_start_time.timetuple()) - last_entry_time
                 if time_since_last_feed_entry > time_since_last_reset:
-                    sensors[s.PRECIP_ACCU_NAME][s.VALUE] = 0
+                    sensors[s.PRECIP_ACCU_NAME][s.VALUE] = 0.00
                 else:
                     sensors[s.PRECIP_ACCU_NAME][s.VALUE] = last_precip_accu
                 
                 #Add previous precip. acc'ed value to current precip. rate
                 sensors[s.PRECIP_ACCU_NAME][s.VALUE] += sensors[s.PRECIP_RATE_NAME][s.VALUE]
+                
+            else:
+                # If rrdtool is disable just increment task time by rate
+                next_reading += s.UPDATE_RATE
 
 
             # --- Check door status ---
@@ -401,19 +439,11 @@ def main():
                 for key, value in sorted(sensors.items(), key=lambda e: e[1][0]):
                     sensor_data.append(value[s.VALUE])
                 sensor_data = [str(i) for i in sensor_data]
-                rrdtool.update(s.RRDTOOL_RRD_FILE_FAST, 'N:' + ':'.join(sensor_data[:-1]))
-                rrdtool.update(s.RRDTOOL_RRD_FILE_SLOW, 'N:' + ':'.join(sensor_data[-1:]))
+                rrdtool.update(s.RRDTOOL_RRD_FILE, 'N:' + ':'.join(sensor_data))
                 if screen_output:
                     print('\t\tOK')
             elif screen_output:
                 print('\t\tN/A')
-
-
-            # --- Delay to give update rate ---
-            next_reading += s.UPDATE_RATE
-            sleep_length = next_reading - time.time()
-            if sleep_length > 0:
-                time.sleep(sleep_length)
 
 
     # ========== User exit command ==========
