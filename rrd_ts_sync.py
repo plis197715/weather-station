@@ -41,7 +41,7 @@ import thingspeak
 #===============================================================================
 def main():
 
-    rrdtool_file = ''
+    rrdtool_file = s.RRDTOOL_RRD_FILE
     thingspeak_write_api_key = ''
     rrd_data = {}
     
@@ -51,28 +51,29 @@ def main():
                                                 s.THINGSPEAK_API_KEY_FILENAME,
                                                 s.THINGSPEAK_CHANNEL_ID)
 
-
     # --- Interogate thingspeak for set up ---
-    
+    parameters = {}
+    r = thingspeak_acc.get_channel_feed(parameters)
 
     # --- Check if RRD file exists ---
     if not os.path.exists(rrdtool_file):
-            return
+        print('No RRA file found! Exiting...')
+        return
 
+    # --- Fetch values from rrd ---
+    data_values = rrdtool.fetch(rrdtool_file, 'LAST', 
+                                '-s', str(update_rate * -2))
 
     # --- Check if RRD file variables match TS variables ---
 
   
     # -- Get last feed upddate from thingspeak ---
-            
-       
-    # --- Fetch values from rrd ---
-    data_values = rrdtool.fetch(rrdtool_file, 'LAST', 
-                                '-s', str(update_rate * -2))
-
+    parameters = {}
+    r = thingspeak_acc.get_last_entry_in_channel_feed(parameters)
+   
 
     # --- Create a list with new thingspeak updates ---
-            
+    
   
     # --- Send data to thingspeak ---
     response = thingspeak_acc.update_channel(sensor_data)
