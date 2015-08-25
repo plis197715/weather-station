@@ -31,12 +31,12 @@
 #===============================================================================
 # Import modules
 #===============================================================================
-#import httplib
-import http.client
-import urllib
-import time
+import requests
 
 
+#===============================================================================
+# Class definition and functions
+#===============================================================================
 class ThingspeakAcc():
     
     '''Sets up thingspeak accounts -
@@ -44,16 +44,20 @@ class ThingspeakAcc():
         '.txt' with the api key inside'''
     
     def __init__(self, acc_host_addr, write_api_key, acc_channel_id):
+        
+        if acc_host_addr[-1:] is not '/':
+            acc_host_addr += '/'
+            
         self.host_addr = acc_host_addr
         self.channel_id = acc_channel_id
         
-        if(write_api_key[-4:] == '.txt'):
+        if write_api_key[-4:] == '.txt' :
             self.api_key = self.read_write_api_key(write_api_key)
         else:
             self.api_key = write_api_key
             self.write_write_api_key_file('thingspeak.txt')
         
-		
+
     #===========================================================================
     # WRITE API KEY TO FILE
     #===========================================================================
@@ -86,25 +90,8 @@ class ThingspeakAcc():
         f.close()
         
         return key
-		
-		
-    #===========================================================================
-    # PREPARE HEADERS
-    #===========================================================================
-    def prepare_connection(self, **parameters):
         
-        #Create POST data
-        if 'api_key' not in parameters:
-            parameters = {'api_key':self.api_key}
-   
-        params = urllib.urlencode(parameters)
-
-        headers = {'Content-type': 'application/x-www-form-urlencoded',
-                    'Accept': 'text/plain'}
-                    
-        return params, headers
-
-    
+        
 
     #===========================================================================
     # UPDATE THINGSPEAK CHANNEL
@@ -133,23 +120,19 @@ class ThingspeakAcc():
             created_at (datetime) - Date when this feed entry was created,
                 in ISO 8601 format, for example: 2014-12-31 23:59:59 . Time
                 zones can be specified via the timezone parameter (optional)'''
-		
-        params, headers = self.prepare_connection(parameters)
-        
-        conn = httplib.HTTPConnection(self.host_addr)
-        conn.request('POST', '/update', params, headers)
-        response = conn.getresponse()
 
-        data = response.read()
-        conn.close()
+        cmd = self.host_addr + 'update'
         
-        return response
+        if 'api_key' not in parameters:
+            parameters['api_key'] = self.api_key
+            
+        return requests.post(cmd, parameters)
 
 
     #===========================================================================
     # GET CHANNEL FEED
     #===========================================================================
-    def get_channel_feed(self, **parameters):
+    def get_channel_feed(self, parameters):
         
         '''Valid parameters:
                 api_key (string) Read API Key for this specific Channel 
@@ -182,24 +165,19 @@ class ThingspeakAcc():
                     valid values: 10, 15, 20, 30, 60, 240, 720, 1440, "daily" (optional)
                 callback (string) Function name to be used for JSONP cross-domain
                     requests (optional)'''
-			
-        params, headers = self.prepare_connection(parameters)
-        
-        conn = httplib.HTTPConnection(self.host_addr)
-        conn.request('GET', '/channels/' + str(self.channel_id) +
-                     '/feeds/', params, headers)
-        response = conn.getresponse()
-
-        data = response.read()
-        conn.close()
-        
-        return response 
+            
+        cmd = self.host_addr + 'channels/'+ str(self.channel_id) + '/feeds'
+     
+        if 'api_key' not in parameters:
+            parameters['api_key'] = self.api_key
+            
+        return requests.get(cmd, parameters)
 
 
     #===========================================================================
     # GET LAST FEED
     #===========================================================================
-    def get_last_entry_in_channel_feed(self, **parameters):
+    def get_last_entry_in_channel_feed(self, parameters):
         
         '''Valid parameters:
             api_key (string) Read API Key for this specific Channel 
@@ -215,20 +193,11 @@ class ThingspeakAcc():
                 requests (optional)
             prepend (string) Text to add before the API response (optional)
             append (string) Text to add after the API response (optional)'''
-        
-        params, headers = self.prepare_connection(parameters)
-        
-        conn = httplib.HTTPConnection(self.host_addr)
-        conn.request('GET', '/channels/' + str(self.channel_id) +
-                     '/feeds/last', params, headers)
-        response = conn.getresponse()
-
-        data = response.read()
-        conn.close()
-        
-        #Convert created at time to seconds since epoch
-        feed_time = time.strptime(response['created_at'], '%Y-%m-%dT%H:%M:%SZ')
-        response['created_at'] = time.mktime(feed_time)
-        
-        return response
+  
+        cmd = self.host_addr + 'channels/'+ str(self.channel_id) + '/feeds/last'
+     
+        if 'api_key' not in parameters:
+            parameters['api_key'] = self.api_key
+            
+        return requests.get(cmd, parameters)
 
