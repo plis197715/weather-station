@@ -48,8 +48,8 @@ def main():
 
     # --- Set up thingspeak account ---
     thingspeak_acc = thingspeak.ThingspeakAcc(s.THINGSPEAK_HOST_ADDR,
-                                                s.THINGSPEAK_API_KEY_FILENAME,
-                                                s.THINGSPEAK_CHANNEL_ID)
+                                                file=s.THINGSPEAK_API_KEY_FILENAME,
+                                                ch_id=s.THINGSPEAK_CHANNEL_ID)
 
     # --- Interogate thingspeak for set up ---
     parameters = {}
