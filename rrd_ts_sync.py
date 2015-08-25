@@ -40,8 +40,7 @@ import thingspeak
 # MAIN
 #===============================================================================
 def main():
-    
-    update_rate = 300 #seconds
+
     rrdtool_file = ''
     thingspeak_write_api_key = ''
     rrd_data = {}
@@ -64,42 +63,24 @@ def main():
     # --- Check if RRD file variables match TS variables ---
 
   
-    # --- Set next loop time ---
-    next_update = time.time() + update_rate
-
-
-    # ========== Timed Loop ==========
-    try:
-        while True:
-            
-            # -- Get last feed upddate from thingspeak ---
+    # -- Get last feed upddate from thingspeak ---
             
        
-            # --- Fetch values from rrd ---
-            data_values = rrdtool.fetch(rrdtool_file, 'LAST', 
-                                        '-s', str(update_rate * -2))
+    # --- Fetch values from rrd ---
+    data_values = rrdtool.fetch(rrdtool_file, 'LAST', 
+                                '-s', str(update_rate * -2))
 
 
-            # --- Create a list with new thingspeak updates ---
+    # --- Create a list with new thingspeak updates ---
             
   
-            # --- Send data to thingspeak ---
-            response = thingspeak_acc.update_channel(sensor_data)
+    # --- Send data to thingspeak ---
+    response = thingspeak_acc.update_channel(sensor_data)
 
 
-            # --- Check response from update attempt ---
+    # --- Check response from update attempt ---
             
 
-            # --- Delay to give update rate ---
-            sleep_length = next_update - time.time()
-            if sleep_length > 0:
-                time.sleep(sleep_length)
-
-
-    # ========== User exit command ==========
-    except KeyboardInterrupt:
-        sys.exit(0)
-            
 
 #===============================================================================
 # Boiler plate
