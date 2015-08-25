@@ -47,13 +47,15 @@ def main():
     
 
     # --- Set up thingspeak account ---
-    thingspeak_acc = thingspeak.ThingspeakAcc(s.THINGSPEAK_HOST_ADDR,
-                                                file=s.THINGSPEAK_API_KEY_FILENAME,
-                                                ch_id=s.THINGSPEAK_CHANNEL_ID)
+    thingspeak_ch = thingspeak.ThingspeakChannel(s.THINGSPEAK_HOST_ADDR,
+                                                    file=s.THINGSPEAK_API_KEY_FILENAME,
+                                                    ch_id=s.THINGSPEAK_CHANNEL_ID)
 
     # --- Interogate thingspeak for set up ---
-    parameters = {}
-    r = thingspeak_acc.get_channel_feed(parameters)
+    parameters = {'results':0}
+    r = thingspeak_ch.get_channel_feed(parameters)
+    last_entry_time = r['channels']['updated_at']
+    field_names = r['channels']['field1']
 
     # --- Check if RRD file exists ---
     if not os.path.exists(rrdtool_file):
@@ -67,16 +69,11 @@ def main():
     # --- Check if RRD file variables match TS variables ---
 
   
-    # -- Get last feed upddate from thingspeak ---
-    parameters = {}
-    r = thingspeak_acc.get_last_entry_in_channel_feed(parameters)
-   
-
     # --- Create a list with new thingspeak updates ---
     
   
     # --- Send data to thingspeak ---
-    response = thingspeak_acc.update_channel(sensor_data)
+    response = thingspeak_ch.update_channel(sensor_data)
 
 
     # --- Check response from update attempt ---
