@@ -40,23 +40,32 @@ import requests
 class ThingspeakAcc():
     
     '''Sets up thingspeak accounts -
-    + Write api key can be either the api key or a filename with extension
-        '.txt' with the api key inside'''
+        + Account host address (required)
+        + api_key= Write api key
+        + file= File to store api key default = thingspeak.txt
+        + ch_id= Channel id'''
     
-    def __init__(self, acc_host_addr, write_api_key, acc_channel_id):
+    def __init__(self, acc_host_addr, **args):
         
         if acc_host_addr[-1:] is not '/':
             acc_host_addr += '/'
             
         self.host_addr = acc_host_addr
-        self.channel_id = acc_channel_id
-        
-        if write_api_key[-4:] == '.txt' :
-            self.api_key = self.read_write_api_key(write_api_key)
+
+        if 'api_key' in args:
+            self.api_key = args['api_key']
+            if 'file' in args:
+                self.write_write_api_key_file(args['file'])
+        elif 'file' in args:
+            self.api_key = self.read_write_api_key(args['file'])        
         else:
-            self.api_key = write_api_key
-            self.write_write_api_key_file('thingspeak.txt')
+            print('ERROR: no api key or api file passed!')
         
+        if 'ch_id' in args:
+            self.channel_id = args['ch_id']
+        else:
+            print('ERROR: No channel id passed!')
+
 
     #===========================================================================
     # WRITE API KEY TO FILE
