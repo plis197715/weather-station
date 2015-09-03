@@ -29,7 +29,7 @@
 #!usr/bin/env python
 
 #===============================================================================
-# Import modules
+# IMPORT MODULES
 #===============================================================================
 import os
 import sys
@@ -118,7 +118,10 @@ def main():
     rrd_set                      = []
     rows                         = 0
 
-    # --- Check and action passed arguments ---
+
+    #---------------------------------------------------------------------------
+    # CHECK AND ACTION PASSED ARGUMENTS
+    #---------------------------------------------------------------------------
     if len(sys.argv) > 1:
         if '--outsensor=OFF' in sys.argv:
             out_sensor_enable = False
@@ -135,14 +138,18 @@ def main():
             sys.exit(0)
 
 
-    # ---Set up LED hardware and thread ---
+    #---------------------------------------------------------------------------
+    # SET UP LED HARDWARE AND THREAD
+    #---------------------------------------------------------------------------
     pi.set_mode(s.LED_PIN, pigpio.OUTPUT)
     ledThread = threading.Thread(target=toggle_LED)
     ledThread.daemon = True
     ledThread.start()
 
     
-   # --- Set up outside temperature sensor ---
+    #---------------------------------------------------------------------------
+    # SET UP OUTSIDE TEMPERATURE SENSOR
+    #---------------------------------------------------------------------------
     if out_sensor_enable:
         #Add to sensor list
         sensors[s.OUT_TEMP_NAME] = [0,0,0]
@@ -159,7 +166,9 @@ def main():
                                     ':' + str(s.OUT_TEMP_MAX)]
 
 
-    # --- Set up inside temperature sensor ---
+    #---------------------------------------------------------------------------
+    # SET UP INSIDE TEMPERATURE SENSOR
+    #---------------------------------------------------------------------------
     if in_sensor_enable:
         #Add to sensor list
         sensors[s.IN_TEMP_NAME] = [0,0,0]
@@ -187,8 +196,9 @@ def main():
                                     ':' + str(s.IN_HUM_MIN) + 
                                     ':' + str(s.IN_HUM_MAX)]
 
-    
-    # --- Set up door sensor ---
+    #---------------------------------------------------------------------------
+    # SET UP DOOR SENSOR
+    #---------------------------------------------------------------------------
     if door_sensor_enable:
         #Add to sensor list
         sensors[s.DOOR_NAME] = [0,0,0]
@@ -208,7 +218,9 @@ def main():
                                     ':' + str(s.DOOR_MAX)]
 
 
-    # --- Set up rain sensor ---
+    #---------------------------------------------------------------------------
+    # SET UP RAIN SENSOR
+    #---------------------------------------------------------------------------
     if rain_sensor_enable:
         #Set up inital values for variables
         precip_tick_count            = 0
@@ -244,26 +256,29 @@ def main():
                                     ':' + str(s.PRECIP_ACCU_MAX)]                                    
 
 
-    # --- Set next loop time ---
+    #---------------------------------------------------------------------------
+    # SET NEXT LOOP TIME
+    #---------------------------------------------------------------------------
     next_reading = time.time() + s.UPDATE_RATE
     
     
-    # --- Set up rrd data and tool ---
+    #---------------------------------------------------------------------------
+    # SET UP RRD DATA AND TOOL
+    #---------------------------------------------------------------------------
     if rrdtool_enable_update:
         #Set up inital values for variables
-        rra_files        = []
-  
+        rra = []  
         #Prepare RRA files
         for i in range(0,len(s.RRDTOOL_RRA),3):
-            rra_files.append('RRA:' + s.RRDTOOL_RRA[i] + ':0.5:' + 
-                                str((s.RRDTOOL_RRA[i+1]*60)/s.UPDATE_RATE) + ':' + 
-                                str(((s.RRDTOOL_RRA[i+2])*24*60)/s.RRDTOOL_RRA[i+1]))
+            rra.append('RRA:' + s.RRDTOOL_RRA[i] + ':0.5:' + 
+                        str((s.RRDTOOL_RRA[i+1]*60)/s.UPDATE_RATE) + ':' + 
+                        str(((s.RRDTOOL_RRA[i+2])*24*60)/s.RRDTOOL_RRA[i+1]))
  
         #Prepare RRD set
         rrd_set = [s.RRDTOOL_RRD_FILE, 
                     '--step', str(s.UPDATE_RATE), 
                     '--start', str(next_reading)]
-        rrd_set +=  rrd_data_sources + rra_files
+        rrd_set +=  rrd_data_sources + rra
         
         #Create RRD files if none exist
         if not os.path.exists(s.RRDTOOL_RRD_FILE):
@@ -275,11 +290,15 @@ def main():
             next_reading  = data_values[0][1]
 
 
-    # ========== Timed Loop ==========
+    #---------------------------------------------------------------------------
+    # TIMED LOOP
+    #---------------------------------------------------------------------------
     try:
         while True:
             
-            # --- Print loop start time ---
+            #-------------------------------------------------------------------
+            # Print loop start time
+            #-------------------------------------------------------------------
             if screen_output:
                 rows -= 1
                 if rows <= 0:
@@ -290,17 +309,23 @@ def main():
                 # !!! Displays GMT - need to add timezone !!!
 
 
-            # --- Delay to give update rate ---
+            #-------------------------------------------------------------------
+            # Delay to give update rate
+            #-------------------------------------------------------------------
             sleep_length = next_reading - time.time()
             if sleep_length > 0:
                 time.sleep(sleep_length)
 
 
+            #-------------------------------------------------------------------
             #Get loop start time
+            #-------------------------------------------------------------------
             loop_start_time = datetime.datetime.now()
 
 
-            # --- Get rain fall measurement ---
+            #-------------------------------------------------------------------
+            # Get rain fall measurement
+            #-------------------------------------------------------------------
             if rain_sensor_enable:
                 
                 #Calculate precip rate and reset it
@@ -354,19 +379,25 @@ def main():
                 next_reading += s.UPDATE_RATE
 
 
-            # --- Check door status ---
+            #-------------------------------------------------------------------
+            # Check door status
+            #-------------------------------------------------------------------
             if door_sensor_enable:
                 sensors[s.DOOR_NAME][s.VALUE] = pi.read(s.DOOR_SENSOR_PIN)
 
 
-            # --- Get outside temperature ---
+            #-------------------------------------------------------------------
+            # Get outside temperature
+            #-------------------------------------------------------------------
             if out_sensor_enable:
                 sensors[s.OUT_TEMP_NAME][s.VALUE] = DS18B20.get_temp(
                                                             s.W1_DEVICE_PATH, 
                                                             s.OUT_TEMP_SENSOR_REF)
 
    
-            # --- Get inside temperature and humidity ---
+            #-------------------------------------------------------------------
+            # Get inside temperature and humidity
+            #-------------------------------------------------------------------
             if in_sensor_enable:
                 DHT22_sensor.trigger()
                 time.sleep(0.2)  #Do not over poll DHT22
@@ -374,7 +405,9 @@ def main():
                 sensors[s.IN_HUM_NAME][s.VALUE]  = DHT22_sensor.humidity()
 
    
-            # --- Display data on screen ---
+            #-------------------------------------------------------------------
+            # Display data on screen
+            #-------------------------------------------------------------------
             if screen_output:
                 for key, value in sorted(sensors.items(), key=lambda e: e[1][0]):
                     if key == s.DOOR_NAME:
@@ -386,7 +419,9 @@ def main():
                         print('\t{:2.2f} '.format(value[s.VALUE]) + value[s.UNIT]),
 
    
-            # --- Add data to RRD ---
+            #-------------------------------------------------------------------
+            # Add data to RRD
+            #-------------------------------------------------------------------
             if rrdtool_enable_update:
                 sensor_data = []
                 for key, value in sorted(sensors.items(), key=lambda e: e[1][0]):
@@ -399,7 +434,9 @@ def main():
                 print('\tN/A')
 
 
-    # ========== User exit command ==========
+    #---------------------------------------------------------------------------
+    # USER EXIT COMMAND
+    #---------------------------------------------------------------------------
     except KeyboardInterrupt:
         
         if screen_output:
@@ -416,7 +453,7 @@ def main():
 
 
 #===============================================================================
-# Boiler plate
+# BOILER PLATE
 #===============================================================================
 if __name__=='__main__':
     main()
