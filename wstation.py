@@ -42,6 +42,17 @@ import DS18B20
 import screen_op
 import settings as s
 import rrdtool
+import logging
+
+
+#===============================================================================
+# SET UP logger
+#===============================================================================
+logging.basicConfig(filename='wstation.log', level=logging.INFO,
+                    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+logger = logging.getLogger(__name__)
+logger.info('Started')
+
 
 
 #===============================================================================
@@ -79,6 +90,8 @@ def count_rain_ticks(gpio, level, tick):
     if pulse:
         last_rising_edge = tick  
         precip_tick_count += 1
+
+    logger.info('Rain tick pulse = %s', pulse)
 
    
 #===============================================================================
@@ -282,12 +295,16 @@ def main():
         
         #Create RRD files if none exist
         if not os.path.exists(s.RRDTOOL_RRD_FILE):
+            logger.info('RRD file not found')
             rrdtool.create(rrd_set)
+            logger.info('New RRD file created')
         else:
             #Fetch data from round robin database & extract next entry time to sync loop
+            logger.info('RRD file found')
             data_values = rrdtool.fetch(s.RRDTOOL_RRD_FILE, 'LAST', 
                                         '-s', str(s.UPDATE_RATE * -2))
             next_reading  = data_values[0][1]
+            logger.info('Next sensor reading at %d', next_reading)
 
 
     #---------------------------------------------------------------------------
@@ -321,6 +338,7 @@ def main():
             #Get loop start time
             #-------------------------------------------------------------------
             loop_start_time = datetime.datetime.now()
+            logger.info('Loop start time: %s', loop_start_time.strftime('%Y-%m-%d %H:%M:%S'))
 
 
             #-------------------------------------------------------------------
@@ -331,6 +349,7 @@ def main():
                 #Calculate precip rate and reset it
                 sensors[s.PRECIP_RATE_NAME][s.VALUE] = precip_tick_count * s.PRECIP_TICK_MEASURE
                 precip_tick_count = 0.000000
+                logger.info('Pricipitation counter RESET')
    
                 #Get previous precip acc'ed value
                 if rrdtool_enable_update:
@@ -344,6 +363,7 @@ def main():
 
                     #Sync task time to rrd database
                     next_reading  = data_values[0][1]
+                    logger.info('Next sensor reading at %d', next_reading)
                     
                     #Extract time and precip acc value from fetched tuple
                     data_location = data_values[1].index(s.PRECIP_ACCU_NAME.replace(' ','_'))
@@ -368,6 +388,7 @@ def main():
                 time_since_last_feed_entry = time.mktime(loop_start_time.timetuple()) - last_entry_time
                 if time_since_last_feed_entry > time_since_last_reset:
                     sensors[s.PRECIP_ACCU_NAME][s.VALUE] = 0.00
+                    logger.info('Pricipitation accumulated RESET')
                 else:
                     sensors[s.PRECIP_ACCU_NAME][s.VALUE] = last_precip_accu
                 
@@ -377,12 +398,14 @@ def main():
             else:
                 # If rrdtool is disable just increment task time by rate
                 next_reading += s.UPDATE_RATE
+                logger.info('Next sensor reading at %d', next_reading)
 
 
             #-------------------------------------------------------------------
             # Check door status
             #-------------------------------------------------------------------
             if door_sensor_enable:
+                logger.info('Reading value from door sensor')
                 sensors[s.DOOR_NAME][s.VALUE] = pi.read(s.DOOR_SENSOR_PIN)
 
 
@@ -390,6 +413,7 @@ def main():
             # Get outside temperature
             #-------------------------------------------------------------------
             if out_sensor_enable:
+                logger.info('Reading value from DS18B20 sensor')
                 sensors[s.OUT_TEMP_NAME][s.VALUE] = DS18B20.get_temp(
                                                             s.W1_DEVICE_PATH, 
                                                             s.OUT_TEMP_SENSOR_REF)
@@ -399,6 +423,7 @@ def main():
             # Get inside temperature and humidity
             #-------------------------------------------------------------------
             if in_sensor_enable:
+                logger.info('Reading value from DHT22 sensor')
                 DHT22_sensor.trigger()
                 time.sleep(0.2)  #Do not over poll DHT22
                 sensors[s.IN_TEMP_NAME][s.VALUE] = DHT22_sensor.temperature()
@@ -423,6 +448,7 @@ def main():
             # Add data to RRD
             #-------------------------------------------------------------------
             if rrdtool_enable_update:
+                logger.info('Updating RRD file')
                 sensor_data = []
                 for key, value in sorted(sensors.items(), key=lambda e: e[1][0]):
                     sensor_data.append(value[s.VALUE])
@@ -449,6 +475,7 @@ def main():
         DHT22_sensor.cancel()
         rain_gauge.cancel()
         
+        logger.info('Finished')
         sys.exit(0)
 
 
