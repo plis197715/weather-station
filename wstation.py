@@ -48,10 +48,10 @@ import logging
 #===============================================================================
 # SET UP logger
 #===============================================================================
-logging.basicConfig(filename='wstation.log', level=logging.INFO,
+logging.basicConfig(filename=s.LOG_FILENAME, level=logging.INFO,
                     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger(__name__)
-logger.info('Started')
+logger.info('Wstation Started')
 
 
 
