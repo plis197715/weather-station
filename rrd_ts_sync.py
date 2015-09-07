@@ -34,6 +34,7 @@
 import rrdtool
 import thingspeak
 import settings as s
+import time
 
 
 
@@ -109,7 +110,7 @@ def main():
     # Check response from update attempt
     #---------------------------------------------------------------------------
     if response.status_code not requests.codes.ok:
-        sleep(5)
+        time.sleep(5)
         response = thingspeak_ch.update_channel(sensor_data)
         logger.info('Thingspeak response %d', r.status_code)
 
