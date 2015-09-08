@@ -74,6 +74,8 @@ last_rising_edge = None
 #===============================================================================
 def count_rain_ticks(gpio, level, tick):
     
+    '''Count the ticks from a reed switch'''
+    
     global precip_tick_count
     global last_rising_edge
     
@@ -98,7 +100,9 @@ def count_rain_ticks(gpio, level, tick):
 # TOGGLE LED
 #===============================================================================
 def toggle_LED():
-
+    
+    '''A thread called at a specific time to toggle an LED on/off'''
+    
     global led_thread_next_call
 
     #Prepare next thread time
@@ -113,6 +117,8 @@ def toggle_LED():
 # MAIN
 #===============================================================================
 def main():
+    
+    '''Entry point for script'''
 
     global precip_tick_count
     global precip_accu
