@@ -1,7 +1,5 @@
 #-------------------------------------------------------------------------------
 #
-# 'Controls shed weather station
-#
 # The MIT License (MIT)
 #
 # Copyright (c) 2015 William De Freitas
@@ -55,11 +53,11 @@ import rrd_tools
 #===============================================================================
 # Set up logger
 #===============================================================================
-log_directory = 'logs'
-log_file = 'read_rain_gauge.log'
+log_file = 'logs/read_rain_gauge.log'
 
-if not os.path.exists(log_directory):
-    os.makedirs(log_directory)
+if '/' in log_file:
+    if not os.path.exists(log_file[:log_file.index('/')]):
+        os.makedirs(log_file[:log_file.index('/')])
 
 logging.basicConfig(filename='{directory}/{file_name}'.format(
                                 directory=log_directory, 
@@ -159,17 +157,20 @@ def main():
     #---------------------------------------------------------------------------
     # SET UP RAIN SENSOR
     #---------------------------------------------------------------------------
-    if s.SENSOR_SET['precip_acc'][ENABLE]:
-        #Set up inital values for variables
-        precip_tick_count = 0
-        precip_accu       = 0
-        last_data_values  = []
-        
-        #Set up rain gauge hardware
-        pi.set_mode(s.SENSOR_SET['precip_acc'][PIN_REF], pigpio.INPUT)
-        rain_gauge = pi.callback(s.SENSOR_SET['precip_acc'][PIN_REF], 
-                                    pigpio.FALLING_EDGE, 
-                                    count_rain_ticks)
+    if not s.SENSOR_SET['precip_acc'][s.ENABLE]:
+        sys.exit()
+
+
+    #Set up inital values for variables
+    precip_tick_count = 0
+    precip_accu       = 0
+    last_data_values  = []
+    
+    #Set up rain gauge hardware
+    pi.set_mode(s.SENSOR_SET['precip_acc'][s.PIN_REF], pigpio.INPUT)
+    rain_gauge = pi.callback(s.SENSOR_SET['precip_acc'][s.PIN_REF], 
+                                pigpio.FALLING_EDGE, 
+                                count_rain_ticks)
 
 
     #---------------------------------------------------------------------------
@@ -198,64 +199,55 @@ def main():
             #-------------------------------------------------------------------
             # Get rain fall measurement
             #-------------------------------------------------------------------
-            if s.SENSOR_SET['precip_acc'][ENABLE]:
                 
-                #Calculate precip rate and reset it
-                sensors['precip_rate'] = precip_tick_count * s.PRECIP_TICK_MEASURE
-                precip_tick_count = 0.000000
-                logger.info('Pricipitation counter RESET')
-   
-                #Get previous precip acc'ed value
-                if rrdtool_enable_update:
-                    data_values = []
-                    last_precip_accu = None
-                    tuple_location = 0
-                    
-                    #Fetch data from round robin database
-                    data_values = rrdtool.fetch(s.RRDTOOL_RRD_FILE, 'LAST', 
-                                                '-s', str(s.UPDATE_RATE * -2))
+            #Calculate precip rate and reset it
+            sensors['precip_rate'] = precip_tick_count * s.PRECIP_TICK_MEASURE
+            precip_tick_count = 0.000000
+            logger.info('Pricipitation counter RESET')
 
-                    #Sync task time to rrd database
-                    next_reading  = data_values[0][1]
-                    logger.info('Next sensor reading at {time}'.format(
-                        time=time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(next_reading))))
-                    
-                    #Extract time and precip acc value from fetched tuple
-                    data_location = data_values[1].index('precip_acc'.replace(' ','_'))
-                    while last_precip_accu is None and -tuple_location < len(data_values[2]):
-                        tuple_location -= 1
-                        last_precip_accu = data_values[2][tuple_location][data_location]
-                        
-                    last_entry_time = data_values[0][1] + (tuple_location * s.UPDATE_RATE)
-                    
-                    #If no data present, set it to 0
-                    if last_precip_accu is None:
-                        last_precip_accu = 0.00
-                        
-   
-                #Previous reset time
-                last_reset = loop_start_time.replace(hour=s.PRECIP_ACC_RESET_TIME[0], 
-                                                        minute=s.PRECIP_ACC_RESET_TIME[1], 
-                                                        second=s.PRECIP_ACC_RESET_TIME[2], 
-                                                        microsecond=s.PRECIP_ACC_RESET_TIME[3])
-    
-                #Reset precip acc    
-                time_since_last_reset = (loop_start_time - last_reset).total_seconds()
-                time_since_last_feed_entry = time.mktime(loop_start_time.timetuple()) - last_entry_time
-                if time_since_last_feed_entry > time_since_last_reset:
-                    sensors['precip_acc'] = 0.00
-                    logger.info('Pricipitation accumulated RESET')
-                else:
-                    sensors['precip_acc'] = last_precip_accu
+            #Get previous precip acc'ed value
+            data_values = []
+            last_precip_accu = None
+            tuple_location = 0
+            
+            #Fetch data from round robin database
+            data_values = rrdtool.fetch(s.RRDTOOL_RRD_FILE, 'LAST', 
+                                        '-s', str(s.UPDATE_RATE * -2))
+
+            #Sync task time to rrd database
+            next_reading  = data_values[0][1]
+            logger.info('Next sensor reading at {time}'.format(
+                time=time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(next_reading))))
+            
+            #Extract time and precip acc value from fetched tuple
+            data_location = data_values[1].index('precip_acc')
+            while last_precip_accu is None and -tuple_location < len(data_values[2]):
+                tuple_location -= 1
+                last_precip_accu = data_values[2][tuple_location][data_location]
                 
-                #Add previous precip. acc'ed value to current precip. rate
-                sensors['precip_acc'] += sensors[s.PRECIP_RATE_NAME]
-                
+            last_entry_time = data_values[0][1] + (tuple_location * s.UPDATE_RATE)
+            
+            #If no data present, set it to 0
+            if last_precip_accu is None:
+                last_precip_accu = 0.00
+                    
+            #Previous reset time
+            last_reset = loop_start_time.replace(hour=s.PRECIP_ACC_RESET_TIME[0], 
+                                                    minute=s.PRECIP_ACC_RESET_TIME[1], 
+                                                    second=s.PRECIP_ACC_RESET_TIME[2], 
+                                                    microsecond=s.PRECIP_ACC_RESET_TIME[3])
+
+            #Reset precip acc    
+            time_since_last_reset = (loop_start_time - last_reset).total_seconds()
+            time_since_last_feed_entry = time.mktime(loop_start_time.timetuple()) - last_entry_time
+            if time_since_last_feed_entry > time_since_last_reset:
+                sensors['precip_acc'] = 0.00
+                logger.info('Pricipitation accumulated RESET')
             else:
-                # If rrdtool is disable just increment task time by rate
-                next_reading += s.UPDATE_RATE
-                logger.info('Next sensor reading at  {time}'.format(
-                    time=time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(next_reading))))
+                sensors['precip_acc'] = last_precip_accu
+            
+            #Add previous precip. acc'ed value to current precip. rate
+            sensors['precip_acc'] += sensors[s.PRECIP_RATE_NAME]
 
 
             #-------------------------------------------------------------------
@@ -280,9 +272,6 @@ def main():
         if screen_output:
             print('\nExiting program...')
         
-        #Set pins to OFF state
-        pi.write(s.LED_PIN, 0)
-
         #Stop processes
         rain_gauge.cancel()
         
