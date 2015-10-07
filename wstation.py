@@ -1,5 +1,7 @@
 #-------------------------------------------------------------------------------
 #
+# 'Controls shed weather station
+#
 # The MIT License (MIT)
 #
 # Copyright (c) 2015 William De Freitas
@@ -52,14 +54,14 @@ import rrd_tools as r
 #===============================================================================
 # Set up logger
 #===============================================================================
-log_directory = 'logs'
-log_file = 'wstation.log'
+log_file = 'logs/wstation.log'
 
-if not os.path.exists(log_directory):
-    os.makedirs(log_directory)
+if '/' in log_file:
+    if not os.path.exists(log_file[:log_file.index('/')]):
+        os.makedirs(log_file[:log_file.index('/')])
 
 logging.basicConfig(filename='{directory}/{file_name}'.format(
-                                directory=log_directory, 
+                                directory=s.LOG_DIRECTORY, 
                                 file_name=log_file), 
                     level=logging.INFO,
                     format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
@@ -89,7 +91,7 @@ def main():
                                         directory=s.RRDTOOL_RRD_DIR, 
                                         file_name=s.RRDTOOL_RRD_FILE)):
 
-        logger.info('RRD file not found')
+        logger.info('RRD file not found')                                          
         logger.info(rrd.create_rrd_file(s.SENSOR_SET,
                                         s.RRDTOOL_RRA, 
                                         s.UPDATE_RATE, 
