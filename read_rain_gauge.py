@@ -144,9 +144,11 @@ def main():
     else:
         #Fetch data from round robin database & extract next entry time to sync loop
         logger.info('RRD file found')
-        data_values = rrdtool.fetch(s.RRDTOOL_RRD_FILE, 'LAST', 
-                                    '-s', str(s.UPDATE_RATE * -2))
-        print(data_values)
+        rrd = rrd_file(s.RRDTOOL_RRD_DIR, s.RRDTOOL_RRD_FILE)
+
+        info = rrd.rrd_file_info()
+        print(info)
+
         sensors = dict.fromkeys(data_values[1], 'U')
         print(sensors)
         next_reading  = data_values[0][1]
@@ -259,7 +261,7 @@ def main():
             #-------------------------------------------------------------------
             # Add data to RRD
             #-------------------------------------------------------------------
-            result = update_rrd_file(s.RRDTOOL_RRD_FILE,sensors)
+            result = rrd.update_rrd_file(sensors)
 
             if result = 'OK':
                 logger.info('Update RRD file OK')
