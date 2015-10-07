@@ -56,11 +56,11 @@ import rrd_tools
 #===============================================================================
 # Set up logger
 #===============================================================================
-log_directory = 'logs'
-log_file = 'read_sensors.log'
+log_file = 'logs/read_sensors.log'
 
-if not os.path.exists(log_directory):
-    os.makedirs(log_directory)
+if '/' in log_file:
+    if not os.path.exists(log_file[:log_file.index('/')]):
+        os.makedirs(log_file[:log_file.index('/')])
 
 logging.basicConfig(filename='{directory}/{file_name}'.format(
                                 directory=log_directory, 
@@ -80,6 +80,12 @@ logger.info('Script start time: {start_time}'.format(
 def main():
     
     '''Entry point for script'''
+
+
+    #---------------------------------------------------------------------------
+    # Log set up
+    #---------------------------------------------------------------------------
+    logger.info(s.SENSOR_SET)
 
 
     #---------------------------------------------------------------------------
@@ -107,6 +113,7 @@ def main():
         rrd = rrd_file(s.RRDTOOL_RRD_DIR, s.RRDTOOL_RRD_FILE)
 
         info = rrd.rrd_file_info()
+
         print(info)
         sensors = dict.fromkeys(data_values[1], 'U')
         print(sensors)
@@ -122,10 +129,9 @@ def main():
         try:
             DHT22_sensor = DHT22.sensor(pi, s.SENSOR_SET['inside_temp'][s.PIN_REF])
         except ValueError:
-            print('Failed to connect to DHT22')
-            logger.error('Failed to connect to DHT22 ({value_error})'.format(
+            logger.error('Failed to connect to DHT22 ({value_error}). Exiting'.format(
                 value_error=ValueError))
-            logger.info('Exiting...')
+            DHT22_sensor.cancel()
             sys.exit()
 
         #Read sensor
@@ -142,10 +148,10 @@ def main():
         logger.info('Reading value from door sensor')
 
         #Set up hardware
-        pi.set_mode(s.SENSOR_SET['door_open'][1], pigpio.INPUT)
+        pi.set_mode(s.SENSOR_SET['door_open'][s.PIN_REF], pigpio.INPUT)
 
         #Read data
-        sensors['door_open'] = pi.read(s.SENSOR_SET['door_open'][1])
+        sensors['door_open'] = pi.read(s.SENSOR_SET['door_open'][s.PIN_REF])
 
 
     #-------------------------------------------------------------------
@@ -185,12 +191,9 @@ def main():
     #-------------------------------------------------------------------
     #Stop processes
     DHT22_sensor.cancel()
-    
     logger.info('--- Read Sensors Finished ---')
+    sys.exit()       
 
-    sys.exit()
-
-        
 
 #===============================================================================
 # BOILER PLATE
