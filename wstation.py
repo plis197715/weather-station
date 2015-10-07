@@ -1,7 +1,5 @@
 #-------------------------------------------------------------------------------
 #
-# 'Controls shed weather station
-#
 # The MIT License (MIT)
 #
 # Copyright (c) 2015 William De Freitas
@@ -84,29 +82,26 @@ def main():
     # SET UP RRD DATA AND TOOL
     #---------------------------------------------------------------------------
 
+    rrd = rrd_file(s.RRDTOOL_RRD_DIR, s.RRDTOOL_RRD_FILE)
+
     #Create RRD files if none exist
     if not os.path.exists('{directory}/{file_name}'.format(
                                         directory=s.RRDTOOL_RRD_DIR, 
                                         file_name=s.RRDTOOL_RRD_FILE)):
 
         logger.info('RRD file not found')
-        logger.info(r.create_rrd_file(s.RRDTOOL_RRD_DIR, 
-                                    s.RRDTOOL_RRD_FILE,
-                                    s.SENSOR_SET,
-                                    s.RRDTOOL_RRA, 
-                                    s.UPDATE_RATE, 
-                                    s.RRDTOOL_HEARTBEAT,
-                                    datetime.datetime.now() + s.UPDATE_RATE))
+        logger.info(rrd.create_rrd_file(s.SENSOR_SET,
+                                        s.RRDTOOL_RRA, 
+                                        s.UPDATE_RATE, 
+                                        s.RRDTOOL_HEARTBEAT,
+                                        datetime.datetime.now() + s.UPDATE_RATE))
         logger.info('New RRD file created')
 
     else:
         #Fetch data from round robin database & extract next entry time to sync loop
         logger.info('RRD file found')
-        data_values = rrdtool.fetch(s.RRDTOOL_RRD_FILE, 'LAST', 
-                                    '-s', str(s.UPDATE_RATE * -2))
-        next_reading  = data_values[0][1]
-        logger.info('RRD FETCH: Next sensor reading at {time}'.format(
-            time=time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(next_reading))))
+        info = rrd.rrd_file_info()
+
 
 
 #===============================================================================
