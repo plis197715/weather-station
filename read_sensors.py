@@ -59,8 +59,8 @@ import rrd_tools
 log_file = 'logs/read_sensors.log'
 
 if '/' in log_file:
-    if not os.path.exists(log_file[:log_file.index('/')]):
-        os.makedirs(log_file[:log_file.index('/')])
+    if not os.path.exists(log_file[:log_file.rindex('/')]):
+        os.makedirs(log_file[:log_file.rindex('/')])
 
 logging.basicConfig(filename='{directory}/{file_name}'.format(
                                 directory=log_directory, 
