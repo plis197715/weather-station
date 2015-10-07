@@ -1,7 +1,5 @@
 #-------------------------------------------------------------------------------
 #
-# 'Controls shed weather station
-#
 # The MIT License (MIT)
 #
 # Copyright (c) 2015 William De Freitas
@@ -32,7 +30,7 @@
 
 
 #===============================================================================
-# Import modules
+# IMPORT MODULES
 #===============================================================================
 
 # Standard Library
@@ -40,64 +38,96 @@ import os
 import sys
 import time
 import datetime
-import logging
 
 # Third party modules
 import rrdtool
 
 
-
 #===============================================================================
-# CREATE RRD FILE
+# CLASS DEFINITION AND FUNCTIONS
 #===============================================================================
-def create_rrd_file(file_dir, file_name, sensor_set, rra_set, update_rate, 
-                    heartbeat, start_time):
-    
-    '''Creates a RRD file'''
+class rrd_file:
 
-    #Check if directory exists
-    if not os.path.exists(file_dir):
-        os.makedirs(file_dir)
+    '''Sets up a thingspeak account'''
 
-    #Prepare data sources
-    rrd_ds      = []
-    for i in sorted(sensor_set):
-        rrd_ds.append('DS:{ds_name}:{ds_type}:{ds_hb}:{ds_min}:{ds_max}'.format(
-                                ds_name=i,
-                                ds_type=sensor_set[i][5],
-                                ds_hb=str(heartbeat*update_rate),
-                                ds_min=sensor_set[i][3],
-                                ds_max=sensor_set[i][4]))
+    #---------------------------------------------------------------------------
+    # PARENT CONSTRUCTOR
+    #---------------------------------------------------------------------------
+    def __init__(self, directory, filename):
 
-    #Prepare RRA files
-    rra_files   = []
-    for i in range(0,len(rra_set),3):
-        rra_files.append('RRA:{cf}:0.5:{steps}:{rows}'.format(
-                                cf=rra_set[i],
-                                steps=str((rra_set[i+1]*60)/update_rate),
-                                rows=str(((rra_set[i+2])*24*60)/rra_set[i+1])))
+        self.file_dir = directory
+        self.file_name = filename
 
-    #Prepare RRD set
-    rrd_set = []
-    rrd_set = [file_name, 
-                '--step', '{step}'.format(step=update_rate), 
-                '--start', '{start_t:.0f}'.format(start_t=start_time)]
-    rrd_set +=  rrd_ds + rra_files
+      
+    #---------------------------------------------------------------------------
+    # CREATE RRD FILE
+    #---------------------------------------------------------------------------
+    def create_rrd_file(self, sensor_set, rra_set, update_rate, heartbeat, 
+                        start_time):
+        
+        '''Creates a RRD file'''
 
-    rrdtool.create(rrd_set)
+        #Check if directory exists
+        if not os.path.exists(self.file_dir):
+            os.makedirs(self.file_dir)
 
-    return rrd_set
+        #Prepare data sources
+        rrd_ds      = []
+        for i in sorted(sensor_set):
+            rrd_ds.append('DS:{ds_name}:{ds_type}:{ds_hb}:{ds_min}:{ds_max}'.format(
+                                    ds_name=i,
+                                    ds_type=sensor_set[i][5],
+                                    ds_hb=str(heartbeat*update_rate),
+                                    ds_min=sensor_set[i][3],
+                                    ds_max=sensor_set[i][4]))
+
+        #Prepare RRA files
+        rra_files   = []
+        for i in range(0,len(rra_set),3):
+            rra_files.append('RRA:{cf}:0.5:{steps}:{rows}'.format(
+                                    cf=rra_set[i],
+                                    steps=str((rra_set[i+1]*60)/update_rate),
+                                    rows=str(((rra_set[i+2])*24*60)/rra_set[i+1])))
+
+        #Prepare RRD set
+        rrd_set = []
+        rrd_set = [self.file_name, 
+                    '--step', '{step}'.format(step=update_rate), 
+                    '--start', '{start_t:.0f}'.format(start_t=start_time)]
+        rrd_set +=  rrd_ds + rra_files
+
+        rrdtool.create(rrd_set)
+
+        return rrd_set
 
 
-#===============================================================================
-# UPDATE RRD FILE
-#===============================================================================
-def update_rrd_file(file_name,data_values):
-    try:
-        rrdtool.update(file_name, 'N:{values}'.format(
-                values=':'.join([str(data_values[i]) for i in sorted(data_values)]))
-        e= 'OK'
-    except rrdtool.error, e:
-        continue
+    #---------------------------------------------------------------------------
+    # CREATE RRD FILE
+    #---------------------------------------------------------------------------
+    def rrd_file_info(self):
 
-    return e
+        '''Reads info data from RRD file'''
+
+        try:
+            e = rrdtool.info('{dir}/{file}'.format(dir=file_dir, file=file_name))
+        except rrdtool.error, e:
+            continue
+
+        return e
+
+
+    #---------------------------------------------------------------------------
+    # UPDATE RRD FILE
+    #---------------------------------------------------------------------------
+    def update_rrd_file(self, data_values):
+
+        '''Updates RRD file with value from passed dictionary'''
+
+        try:
+            rrdtool.update(file_name, 'N:{values}'.format(
+                    values=':'.join([str(data_values[i]) for i in sorted(data_values)]))
+            e= 'OK'
+        except rrdtool.error, e:
+            continue
+
+        return e
