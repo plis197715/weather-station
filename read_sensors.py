@@ -96,10 +96,7 @@ def main():
 
     #---------------------------------------------------------------------------
     # SET UP RRD DATA AND TOOL
-    #---------------------------------------------------------------------------
-    #Set up inital values for variables
-    rra_files        = []
-    
+    #---------------------------------------------------------------------------    
     #Create RRD files if none exist
     if not os.path.exists(s.RRDTOOL_RRD_FILE):
         logger.error('RRD file not found. Exiting...')
@@ -107,14 +104,12 @@ def main():
     else:
         #Fetch data from round robin database & extract next entry time to sync loop
         logger.info('RRD file found')
-        data_values = rrdtool.fetch(s.RRDTOOL_RRD_FILE, 'LAST', 
-                                    '-s', str(s.UPDATE_RATE * -2))
-        print(data_values)
+        rrd = rrd_file(s.RRDTOOL_RRD_DIR, s.RRDTOOL_RRD_FILE)
+
+        info = rrd.rrd_file_info()
+        print(info)
         sensors = dict.fromkeys(data_values[1], 'U')
         print(sensors)
-        next_reading  = data_values[0][1]
-        logger.info('RRD FETCH: Next sensor reading at {time}'.format(
-            time=time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(next_reading))))
 
 
     #-------------------------------------------------------------------
