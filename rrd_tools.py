@@ -48,17 +48,14 @@ import rrdtool
 #===============================================================================
 class rrd_file:
 
-    '''Sets up a thingspeak account'''
+    '''Sets up the RRD file 'a thingspeak account'''
 
-    #---------------------------------------------------------------------------
-    # PARENT CONSTRUCTOR
-    #---------------------------------------------------------------------------
     def __init__(self, directory, filename):
 
         self.file_dir = directory
         self.file_name = filename
 
-      
+    
     #---------------------------------------------------------------------------
     # CREATE RRD FILE
     #---------------------------------------------------------------------------
@@ -109,7 +106,8 @@ class rrd_file:
         '''Reads info data from RRD file'''
 
         try:
-            e = rrdtool.info('{dir}/{file}'.format(dir=file_dir, file=file_name))
+            e = rrdtool.info('{dir}/{file}'.format(dir=self.file_dir, 
+                                                    file=self.file_name))
         except rrdtool.error, e:
             continue
 
@@ -124,7 +122,9 @@ class rrd_file:
         '''Updates RRD file with value from passed dictionary'''
 
         try:
-            rrdtool.update(file_name, 'N:{values}'.format(
+            rrdtool.update(
+                '{dir}/{file}'.format(dir=self.file_dir, file=self.file_name), 
+                'N:{values}'.format(
                     values=':'.join([str(data_values[i]) for i in sorted(data_values)]))
             e= 'OK'
         except rrdtool.error, e:
