@@ -57,8 +57,8 @@ import rrd_tools as r
 log_file = 'logs/wstation.log'
 
 if '/' in log_file:
-    if not os.path.exists(log_file[:log_file.index('/')]):
-        os.makedirs(log_file[:log_file.index('/')])
+    if not os.path.exists(log_file[:log_file.rindex('/')]):
+        os.makedirs(log_file[:log_file.rindex('/')])
 
 logging.basicConfig(filename='{directory}/{file_name}'.format(
                                 directory=s.LOG_DIRECTORY, 
