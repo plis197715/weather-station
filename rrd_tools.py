@@ -57,11 +57,16 @@ class rrd_file:
 
         self.file_name = filename
 
+        if os.path.exists(self.file_name):
+            info = rrd_file_info()
+            self.step = info.step
+
+
 
     #---------------------------------------------------------------------------
     # CREATE RRD FILE
     #---------------------------------------------------------------------------
-    def create_rrd_file(self, sensor_set, rra_set, update_rate, heartbeat, 
+    def create_rrd_file(self, sensor_set, rra_set, step, heartbeat, 
                         start_time):
         
         '''Creates a RRD file'''
@@ -71,9 +76,8 @@ class rrd_file:
                 os.makedirs(self.file_dir)
 
         #Prepare RRD set
-        rrd_set = []
         rrd_set = [self.file_name, 
-                    '--step', '{step}'.format(step=update_rate), 
+                    '--step', '{step_size}'.format(step_size=step), 
                     '--start', '{start_t:.0f}'.format(start_t=start_time)]
 
         #Prepare data sources
@@ -81,7 +85,7 @@ class rrd_file:
             rrd_set.append('DS:{ds_name}:{ds_type}:{ds_hb}:{ds_min}:{ds_max}'.format(
                                     ds_name=i,
                                     ds_type=sensor_set[i][5],
-                                    ds_hb=str(heartbeat*update_rate),
+                                    ds_hb=str(heartbeat*step),
                                     ds_min=sensor_set[i][3],
                                     ds_max=sensor_set[i][4]))
 
@@ -89,7 +93,7 @@ class rrd_file:
         for i in range(0,len(rra_set),3):
             rrd_set.append('RRA:{cf}:0.5:{steps}:{rows}'.format(
                                     cf=rra_set[i],
-                                    steps=str((rra_set[i+1]*60)/update_rate),
+                                    steps=str((rra_set[i+1]*60)/step),
                                     rows=str(((rra_set[i+2])*24*60)/rra_set[i+1])))
 
         rrdtool.create(rrd_set)
@@ -105,12 +109,9 @@ class rrd_file:
         '''Reads info data from RRD file'''
 
         try:
-            e = rrdtool.info('{dir}/{file}'.format(dir=self.file_dir, 
-                                                    file=self.file_name))
+            return rrdtool.info('{file}'.format(file=self.filename)))
         except rrdtool.error, e:
-            continue
-
-        return e
+            return e
 
 
     #---------------------------------------------------------------------------
@@ -122,11 +123,35 @@ class rrd_file:
 
         try:
             rrdtool.update(
-                '{dir}/{file}'.format(dir=self.file_dir, file=self.file_name), 
+                '{file}'.format(file=self.filename), 
                 'N:{values}'.format(
-                    values=':'.join([str(data_values[i]) for i in sorted(data_values)]))
-            e= 'OK'
+                    values=':'.join([str(data_values[i]) for i in sorted(data_values)])))
+            return 'OK'
         except rrdtool.error, e:
-            continue
+            return e
 
-        return e
+
+    #---------------------------------------------------------------------------
+    # RETRIEVE NEXT UPDATE TIME
+    #---------------------------------------------------------------------------
+    def get_next_update_time(self):
+
+        '''Retrieves next update time'''
+
+        data_values = rrdtool.fetch(self.filename, 'LAST', 
+                                        '-s', str(self.step * -2))
+
+        return data_values[0][1]
+
+
+    #---------------------------------------------------------------------------
+    # RETRIEVE DATA SOURCES
+    #---------------------------------------------------------------------------
+    def get_data_sources(self):
+
+        '''Retrieves data sources'''
+
+        data_values = rrdtool.fetch(self.filename, 'LAST', 
+                                        '-s', str(self.step * -2))
+
+        return data_values[1]
