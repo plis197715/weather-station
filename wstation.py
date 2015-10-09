@@ -45,32 +45,12 @@ import logging
 
 # Third party modules
 import rrdtool
+from crontab import CronTab
 
 # Application modules
 import settings as s
 import rrd_tools as r
-
-
-#===============================================================================
-# Set up logger
-#===============================================================================
-log_file = 'logs/wstation.log'
-
-if '/' in log_file:
-    if not os.path.exists(log_file[:log_file.rindex('/')]):
-        os.makedirs(log_file[:log_file.rindex('/')])
-
-logging.basicConfig(filename='{directory}/{file_name}'.format(
-                                directory=s.LOG_DIRECTORY, 
-                                file_name=log_file), 
-                    level=logging.INFO,
-                    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
-logger = logging.getLogger(__name__)
-logger.info('--- Read Rain Gauge Script Started ---')
-script_start_time = datetime.datetime.now()
-logger.info('Script start time: {start_time}'.format(
-    start_time=script_start_time.strftime('%Y-%m-%d %H:%M:%S'))) 
-
+import read_rain_gauge
 
 
 #===============================================================================
@@ -79,22 +59,35 @@ logger.info('Script start time: {start_time}'.format(
 def main():
     
     '''Entry point for script'''
- 
+
+    #---------------------------------------------------------------------------
+    # Set up logger
+    #---------------------------------------------------------------------------
+    log_file = 'logs/wstation.log'
+
+    if '/' in log_file:
+        if not os.path.exists(log_file[:log_file.rindex('/')]):
+            os.makedirs(log_file[:log_file.rindex('/')])
+
+    logging.basicConfig(filename='{file_name}'.format(file_name=log_file), 
+                        level=logging.INFO,
+                        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+    logger = logging.getLogger(__name__)
+    logger.info('--- Read Rain Gauge Script Started ---')
+    script_start_time = datetime.datetime.now()
+    logger.info('Script start time: {start_time}'.format(
+        start_time=script_start_time.strftime('%Y-%m-%d %H:%M:%S'))) 
+
+
     #---------------------------------------------------------------------------
     # SET UP RRD DATA AND TOOL
     #---------------------------------------------------------------------------
-
-    rrd = rrd_file(s.RRDTOOL_RRD_DIR, s.RRDTOOL_RRD_FILE)
+    rrd = rrd_file(s.RRDTOOL_RRD_FILE)
 
     #Create RRD files if none exist
-    if not os.path.exists('{directory}/{file_name}'.format(
-                                        directory=s.RRDTOOL_RRD_DIR, 
-                                        file_name=s.RRDTOOL_RRD_FILE)):
-
+    if not os.path.exists('{file_name}'.format(file_name=s.RRDTOOL_RRD_FILE)):
         logger.info('RRD file not found')                                          
-        logger.info(rrd.create_rrd_file(s.SENSOR_SET,
-                                        s.RRDTOOL_RRA, 
-                                        s.UPDATE_RATE, 
+        logger.info(rrd.create_rrd_file(s.RRDTOOL_RRA, s.UPDATE_RATE, 
                                         s.RRDTOOL_HEARTBEAT,
                                         datetime.datetime.now() + s.UPDATE_RATE))
         logger.info('New RRD file created')
@@ -104,6 +97,19 @@ def main():
         logger.info('RRD file found')
         info = rrd.rrd_file_info()
 
+
+    #---------------------------------------------------------------------------
+    # RUN SCRIPT
+    #---------------------------------------------------------------------------
+    read_rain_gauge.main()
+
+    #Set up to read sensors using cron job
+    cron = CronTab()
+    job = cron.new(command='read_sensors.py')
+    if not cron.find_command('read_sensors.py'):
+        job.minute.during(0,55).every(s.UPDATE_RATE/60)
+        #job.minute.on(0, 5, 10, 15, 20 ,25, 30, 35 ,40, 45, 50, 55)
+        #job.minute.on([i for i in range(0, 60, s.UPDATE_RATE/60)])
 
 
 #===============================================================================

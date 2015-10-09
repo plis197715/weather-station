@@ -54,38 +54,32 @@ import rrd_tools
 
 
 #===============================================================================
-# Set up logger
-#===============================================================================
-log_file = 'logs/read_sensors.log'
-
-if '/' in log_file:
-    if not os.path.exists(log_file[:log_file.rindex('/')]):
-        os.makedirs(log_file[:log_file.rindex('/')])
-
-logging.basicConfig(filename='{directory}/{file_name}'.format(
-                                directory=log_directory, 
-                                file_name=log_file), 
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
-logger = logging.getLogger(__name__)
-logger.info('--- Read Sensor Script Started ---')
-script_start_time = datetime.datetime.now()
-logger.info('Script start time: {start_time}'.format(
-    start_time=script_start_time.strftime('%Y-%m-%d %H:%M:%S'))) 
-
-
-#===============================================================================
 # MAIN
 #===============================================================================
-def main():
+def get_data():
     
-    '''Entry point for script'''
-
+    '''Entry point for script and read sensor data'''
 
     #---------------------------------------------------------------------------
     # Log set up
     #---------------------------------------------------------------------------
-    logger.info(s.SENSOR_SET)
+    log_file = 'logs/read_sensors.log'
+
+    if '/' in log_file:
+        if not os.path.exists(log_file[:log_file.rindex('/')]):
+            os.makedirs(log_file[:log_file.rindex('/')])
+
+    logging.basicConfig(filename='{directory}/{file_name}'.format(
+                                    directory=log_directory, 
+                                    file_name=log_file), 
+        level=logging.INFO,
+        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+    logger = logging.getLogger(__name__)
+    logger.info('--- Read Sensor Script Started ---')
+    logger.info('Script start time: {start_time}'.format(
+        start_time=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))) 
+
+    logger.info(sensors.ds)
 
 
     #---------------------------------------------------------------------------
@@ -94,15 +88,16 @@ def main():
     try:
         pi = pigpio.pi()
     except ValueError:
-        print('Failed to connect to PIGPIO')
-        logger.error('Failed to connect to PIGPIO ({value_error}). Exiting...'.format(
-            value_error=ValueError))
+        logger.error('Failed to connect to PIGPIO ({error}). Exiting...'.format(
+            error=ValueError))
         sys.exit()
 
 
     #---------------------------------------------------------------------------
     # SET UP RRD DATA AND TOOL
     #---------------------------------------------------------------------------    
+    sensors = data_sources(s.SENSOR_SET)
+
     #Create RRD files if none exist
     if not os.path.exists(s.RRDTOOL_RRD_FILE):
         logger.error('RRD file not found. Exiting...')
@@ -110,7 +105,7 @@ def main():
     else:
         #Fetch data from round robin database & extract next entry time to sync loop
         logger.info('RRD file found')
-        rrd = rrd_file(s.RRDTOOL_RRD_DIR, s.RRDTOOL_RRD_FILE)
+        rrd = rrd_file(s.RRDTOOL_RRD_FILE)
 
         info = rrd.rrd_file_info()
 
@@ -122,49 +117,49 @@ def main():
     #-------------------------------------------------------------------
     # Get inside temperature and humidity
     #-------------------------------------------------------------------
-    if s.SENSOR_SET['inside_temp'][s.ENABLE]:
+    if sensors.ds['inside_temp'].enable:
         logger.info('Reading value from DHT22 sensor')
 
         #Set up sensor  
         try:
-            DHT22_sensor = DHT22.sensor(pi, s.SENSOR_SET['inside_temp'][s.PIN_REF])
+            DHT22_sensor = DHT22.sensor(pi, sensors.ds['inside_temp'].pin_ref)
         except ValueError:
-            logger.error('Failed to connect to DHT22 ({value_error}). Exiting'.format(
-                value_error=ValueError))
+            logger.error('Failed to connect to DHT22 ({error}). Exiting'.format(
+                error=ValueError))
             DHT22_sensor.cancel()
             sys.exit()
 
         #Read sensor
         DHT22_sensor.trigger()
         time.sleep(0.2)  #Do not over poll DHT22
-        sensors['inside_temp'] = DHT22_sensor.temperature()
-        sensors['inside_hum']  = DHT22_sensor.humidity() 
+        sensors.ds['inside_temp'].value = DHT22_sensor.temperature()
+        sensors.ds['inside_hum'].value  = DHT22_sensor.humidity() 
 
 
     #-------------------------------------------------------------------
     # Check door status
     #-------------------------------------------------------------------
-    if s.SENSOR_SET['door_open'][s.ENABLE]:
+    if sensors.ds['door_open'].enable:
         logger.info('Reading value from door sensor')
 
         #Set up hardware
-        pi.set_mode(s.SENSOR_SET['door_open'][s.PIN_REF], pigpio.INPUT)
+        pi.set_mode(sensors.ds['door_open'].pin_ref, pigpio.INPUT)
 
         #Read data
-        sensors['door_open'] = pi.read(s.SENSOR_SET['door_open'][s.PIN_REF])
+        sensors.ds['door_open'].value = pi.read(sensors.ds['door_open'].pin_ref)
 
 
     #-------------------------------------------------------------------
     # Get outside temperature
     #-------------------------------------------------------------------
-    if s.SENSOR_SET['outside_temp'][s.ENABLE]:
+    if sensors.ds['outside_temp'].enable:
         logger.info('Reading value from DS18B20 sensor')
-        sensors['outside_temp'] = DS18B20.get_temp(s.W1_DEVICE_PATH, 
-                                                   s.SENSOR_SET['outside_temp'][s.PIN_REF])
+        sensors.ds['outside_temp'].value = DS18B20.get_temp(s.W1_DEVICE_PATH, 
+                                    sensors.ds['outside_temp'].pin_ref)
         
         #Log an error if failed to read sensor
         #Error value will exceed max on RRD file and be added as NaN
-        if sensors['outside_temp'] is 999.99:
+        if sensors.ds['outside_temp'].value is 999.99:
             logger.error('Failed to read DS18B20 sensor')
 
 
@@ -177,13 +172,11 @@ def main():
     #-------------------------------------------------------------------
     # Add data to RRD
     #-------------------------------------------------------------------
-    result = update_rrd_file(s.RRDTOOL_RRD_FILE,sensors)
-
-    if result = 'OK':
+    if rrd.update_rrd_file(sensors) = 'OK':
         logger.info('Update RRD file OK')
     else:
-        logger.error('Failed to update RRD file ({value_error})'.format(
-            value_error=result))
+        logger.error('Failed to update RRD file ({error})'.format(
+            error=result))
 
 
     #-------------------------------------------------------------------
@@ -192,11 +185,11 @@ def main():
     #Stop processes
     DHT22_sensor.cancel()
     logger.info('--- Read Sensors Finished ---')
-    sys.exit()       
+    sys.exit()
 
 
 #===============================================================================
 # BOILER PLATE
 #===============================================================================
 if __name__=='__main__':
-    sys.exit(main())
+    sys.exit(get_data())
