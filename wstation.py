@@ -1,7 +1,5 @@
 #-------------------------------------------------------------------------------
 #
-# 'Controls shed weather station
-#
 # The MIT License (MIT)
 #
 # Copyright (c) 2015 William De Freitas
@@ -28,8 +26,11 @@
 
 #!/usr/bin/env python
 
-'''Gathers data from various sensors to capture weather conditiona and take
-apropriate actions in shed.'''
+'''Sets up the enviroment to run the weather station.
+    Begins by checking that an RRD file exists and that the data sources are 
+    correct. If no RRD file found then create a new one.
+    Initates scripts via cronjobs.
+    Rain gauge has a looping script - initiated by this script.'''
 
 
 #===============================================================================
@@ -38,19 +39,33 @@ apropriate actions in shed.'''
 
 # Standard Library
 import os
-import sys
 import time
-import datetime
-import logging
+import sys
+import subprocess
 
 # Third party modules
-import rrdtool
 from crontab import CronTab
 
 # Application modules
+import log
 import settings as s
-import rrd_tools as r
-import read_rain_gauge
+import rrd_tools
+
+
+#===============================================================================
+# Check script is running
+#===============================================================================
+def check_process_is_running(script_name):
+    try:
+        cmd1 = subprocess.Popen(['ps', 'aux'], stdout=subprocess.PIPE)
+        cmd2 = subprocess.Popen(['grep', '-v', 'grep'], stdin=cmd1.stdout, 
+                                stdout=subprocess.PIPE)
+        cmd3 = subprocess.Popen(['grep', script_name], stdin=cmd2.stdout, 
+                                stdout=subprocess.PIPE)
+        return cmd3.communicate()[0] 
+
+    except Exception, e:
+        return e
 
 
 #===============================================================================
@@ -61,56 +76,70 @@ def main():
     '''Entry point for script'''
 
     #---------------------------------------------------------------------------
-    # Set up logger
-    #---------------------------------------------------------------------------
-    log_file = 'logs/wstation.log'
+    # SET UP LOGGER
+    #--------------------------------------------------------------------------- 
+    logger = log.setup('root', '/home/pi/weather/logs/wstation.log')
 
-    if '/' in log_file:
-        if not os.path.exists(log_file[:log_file.rindex('/')]):
-            os.makedirs(log_file[:log_file.rindex('/')])
-
-    logging.basicConfig(filename='{file_name}'.format(file_name=log_file), 
-                        level=logging.INFO,
-                        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
-    logger = logging.getLogger(__name__)
     logger.info('--- Read Rain Gauge Script Started ---')
-    script_start_time = datetime.datetime.now()
-    logger.info('Script start time: {start_time}'.format(
-        start_time=script_start_time.strftime('%Y-%m-%d %H:%M:%S'))) 
 
 
     #---------------------------------------------------------------------------
     # SET UP RRD DATA AND TOOL
     #---------------------------------------------------------------------------
-    rrd = rrd_file(s.RRDTOOL_RRD_FILE)
+    rrd = rrd_tools.RrdFile(s.RRDTOOL_RRD_FILE)
 
-    #Create RRD files if none exist
-    if not os.path.exists('{file_name}'.format(file_name=s.RRDTOOL_RRD_FILE)):
-        logger.info('RRD file not found')                                          
-        logger.info(rrd.create_rrd_file(s.RRDTOOL_RRA, s.UPDATE_RATE, 
-                                        s.RRDTOOL_HEARTBEAT,
-                                        datetime.datetime.now() + s.UPDATE_RATE))
-        logger.info('New RRD file created')
+    if not os.path.exists(s.RRDTOOL_RRD_FILE):
+        logger.debug(rrd.create_file(s.SENSOR_SET,
+                                    s.RRDTOOL_RRA, 
+                                    s.UPDATE_RATE, 
+                                    s.RRDTOOL_HEARTBEAT,
+                                    int(time.time() + s.UPDATE_RATE)))
+        logger.info('RRD file not found. New file created')
+
+    elif sorted(rrd.ds_list()) != sorted(list(s.SENSOR_SET.keys())):
+            logger.error('Data sources in RRD file does not match set up.')
+            sys.exit()
 
     else:
-        #Fetch data from round robin database & extract next entry time to sync loop
-        logger.info('RRD file found')
-        info = rrd.rrd_file_info()
+        logger.info('RRD file found and checked OK')
+
 
 
     #---------------------------------------------------------------------------
-    # RUN SCRIPT
+    # SCRIPTS
     #---------------------------------------------------------------------------
-    read_rain_gauge.main()
 
     #Set up to read sensors using cron job
-    cron = CronTab()
-    job = cron.new(command='read_sensors.py')
-    if not cron.find_command('read_sensors.py'):
-        job.minute.during(0,55).every(s.UPDATE_RATE/60)
-        #job.minute.on(0, 5, 10, 15, 20 ,25, 30, 35 ,40, 45, 50, 55)
-        #job.minute.on([i for i in range(0, 60, s.UPDATE_RATE/60)])
+    try:
+        cmd='python /home/pi/weather/read_sensors.py'
+        cron = CronTab()
+        job = cron.new(command= cmd, comment= 'weather station job')
+        if not cron.find_command(cmd):
+            job.minute.during(4, 59).every(s.UPDATE_RATE/60)
+            cron.write()
+            logger.info('CronTab file updated.')
+            logger.debug(cron.render())
+        else:
+            logger.info('Command already in CronTab file')
 
+    except ValueError:
+        logger.error('CronTab file could not be updated. Exiting...')
+        sys.exit()
+
+
+    #Run read rain gauge script if not already running
+    cmd = '/home/pi/weather/read_rain_gauge.py'
+    script_not_running = check_process_is_running(cmd)
+    if script_not_running:
+        logger.info('Script read_rain_gauge.py already runnning.')
+        logger.info(script_not_running)
+    else:
+        logger.info('Start Read Rain Gauge script')
+        status = subprocess.Popen(['python', cmd])
+        logger.info(status)
+
+
+    logger.info('--- Wstation Script Finished ---')
 
 #===============================================================================
 # BOILER PLATE

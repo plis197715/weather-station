@@ -1,7 +1,5 @@
 #-------------------------------------------------------------------------------
 #
-# 'Controls shed weather station
-#
 # The MIT License (MIT)
 #
 # Copyright (c) 2015 William De Freitas
@@ -28,7 +26,13 @@
 
 #!/usr/bin/env python
 
-'''Gathers data from various sensors to capture weather conditions in shed.'''
+''' Script sets up hardware as long as sensor is enabled.
+    Reads the data from the sensor and then updates the RRD file.
+    Sensor value is initiated with 'U' which passed to the rrdtool will be 
+    recorded as NaN. If reading sensor data fails the value is not updated and
+    'U' will remain. 
+    The script will not exit on sensor failure only once it finishes or if a RRD
+    file is not found or PIGPIO does not load correctly.'''
 
 
 #===============================================================================
@@ -36,160 +40,165 @@
 #===============================================================================
 
 # Standard Library
-import os
 import sys
 import time
-import datetime
-import logging
+import collections
 
 # Third party modules
-import rrdtool
 import pigpio
 import DHT22
 
 # Application modules
+import log
 import DS18B20
 import settings as s
 import rrd_tools
 
 
+
 #===============================================================================
 # MAIN
 #===============================================================================
-def get_data():
+def main():
     
-    '''Entry point for script and read sensor data'''
+    '''Entry point for script'''
+
 
     #---------------------------------------------------------------------------
-    # Log set up
+    # Set up logger
     #---------------------------------------------------------------------------
-    log_file = 'logs/read_sensors.log'
+    logger = log.setup('root', '/home/pi/weather/logs/read_sensors.log')
 
-    if '/' in log_file:
-        if not os.path.exists(log_file[:log_file.rindex('/')]):
-            os.makedirs(log_file[:log_file.rindex('/')])
-
-    logging.basicConfig(filename='{directory}/{file_name}'.format(
-                                    directory=log_directory, 
-                                    file_name=log_file), 
-        level=logging.INFO,
-        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
-    logger = logging.getLogger(__name__)
-    logger.info('--- Read Sensor Script Started ---')
-    logger.info('Script start time: {start_time}'.format(
-        start_time=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))) 
-
-    logger.info(sensors.ds)
-
+    logger.info('--- Read Sensor Script Started ---')   
+    
 
     #---------------------------------------------------------------------------
     # Load PIGPIO
     #---------------------------------------------------------------------------
     try:
         pi = pigpio.pi()
+
     except ValueError:
-        logger.error('Failed to connect to PIGPIO ({error}). Exiting...'.format(
-            error=ValueError))
+        logger.error('Failed to connect to PIGPIO ({error_v}). Exiting...'.format(
+            error_v=ValueError))
         sys.exit()
 
 
     #---------------------------------------------------------------------------
-    # SET UP RRD DATA AND TOOL
-    #---------------------------------------------------------------------------    
-    sensors = data_sources(s.SENSOR_SET)
+    # Check Rrd File And Set Up Sensor Variables
+    #---------------------------------------------------------------------------
+    try:
+        rrd = rrd_tools.RrdFile(s.RRDTOOL_RRD_FILE)
 
-    #Create RRD files if none exist
-    if not os.path.exists(s.RRDTOOL_RRD_FILE):
-        logger.error('RRD file not found. Exiting...')
+        if sorted(rrd.ds_list()) != sorted(list(s.SENSOR_SET.keys())):
+            logger.error('Data sources in RRD file does not match set up.')
+            logger.error(rrd.ds_list())
+            logger.error(list(s.SENSOR_SET.keys()))
+            logger.error('Exiting...')
+            sys.exit()
+        else:
+            logger.info('RRD fetch successful')
+
+    except ValueError:
+        logger.error('RRD fetch failed. Exiting...')
         sys.exit()
-    else:
-        #Fetch data from round robin database & extract next entry time to sync loop
-        logger.info('RRD file found')
-        rrd = rrd_file(s.RRDTOOL_RRD_FILE)
 
-        info = rrd.rrd_file_info()
 
-        print(info)
-        sensors = dict.fromkeys(data_values[1], 'U')
-        print(sensors)
+    #---------------------------------------------------------------------------
+    # SET UP SENSOR VARIABLES
+    #---------------------------------------------------------------------------  
+    sensor_value = {x: 'U' for x in s.SENSOR_SET}
+
+    sensor_settings = collections.namedtuple('sensor_settings',
+                                             'enable ref unit min max type')     
+    sensor = {k: sensor_settings(*s.SENSOR_SET[k]) for k in s.SENSOR_SET}
 
 
     #-------------------------------------------------------------------
     # Get inside temperature and humidity
     #-------------------------------------------------------------------
-    if sensors.ds['inside_temp'].enable:
-        logger.info('Reading value from DHT22 sensor')
-
-        #Set up sensor  
+    if sensor['inside_temp'].enable or sensor['inside_hum'].enable: 
         try:
-            DHT22_sensor = DHT22.sensor(pi, sensors.ds['inside_temp'].pin_ref)
-        except ValueError:
-            logger.error('Failed to connect to DHT22 ({error}). Exiting'.format(
-                error=ValueError))
+            DHT22_sensor = DHT22.sensor(pi, sensor['inside_temp'].ref)
+            DHT22_sensor.trigger()
+            time.sleep(0.2)  #Do not over poll DHT22
             DHT22_sensor.cancel()
-            sys.exit()
 
-        #Read sensor
-        DHT22_sensor.trigger()
-        time.sleep(0.2)  #Do not over poll DHT22
-        sensors.ds['inside_temp'].value = DHT22_sensor.temperature()
-        sensors.ds['inside_hum'].value  = DHT22_sensor.humidity() 
+            if sensor['inside_temp'].enable:
+                sensor_value['inside_temp'] = DHT22_sensor.temperature()
+
+            if sensor['inside_hum'].enable: 
+                sensor_value['inside_hum']  = DHT22_sensor.humidity() 
+
+            logger.info('Reading value from DHT22 sensor... OK')
+
+        except ValueError:
+            logger.warning('Failed to read DHT22 ({value_error})'.format(
+                value_error=ValueError))
 
 
     #-------------------------------------------------------------------
     # Check door status
     #-------------------------------------------------------------------
-    if sensors.ds['door_open'].enable:
-        logger.info('Reading value from door sensor')
+    if sensor['door_open'].enable:
+        try:
+            pi.set_mode(sensor['door_open'].ref, pigpio.INPUT)
+            sensor_value['door_open'] = pi.read(sensor['door_open'].ref)
+            logger.info('Reading value from door sensor... OK')
 
-        #Set up hardware
-        pi.set_mode(sensors.ds['door_open'].pin_ref, pigpio.INPUT)
-
-        #Read data
-        sensors.ds['door_open'].value = pi.read(sensors.ds['door_open'].pin_ref)
+        except ValueError:
+            logger.warning('Failed to read door sensor ({value_error})'.format(
+                value_error=ValueError))
 
 
     #-------------------------------------------------------------------
     # Get outside temperature
     #-------------------------------------------------------------------
-    if sensors.ds['outside_temp'].enable:
-        logger.info('Reading value from DS18B20 sensor')
-        sensors.ds['outside_temp'].value = DS18B20.get_temp(s.W1_DEVICE_PATH, 
-                                    sensors.ds['outside_temp'].pin_ref)
+    if sensor['outside_temp'].enable:
+        try:
+            out_sensor = DS18B20.DS18B20(sensor['outside_temp'].ref, s.W1_DEVICE_PATH)
+            sensor_value['outside_temp'] = out_sensor.get_temp()
+
+            if sensor_value['outside_temp'] > 900:
+                logger.warning('Failed to read DS18B20 sensor (temp > 900)')
+                sensor_value['outside_temp'] = 'U'
+            else:
+                logger.info('Reading value from DS18B20 sensor... OK')
+
+        except ValueError:
+            logger.warning('Failed to read DS18B20 ({value_error})'.format(
+                value_error=ValueError))
         
-        #Log an error if failed to read sensor
-        #Error value will exceed max on RRD file and be added as NaN
-        if sensors.ds['outside_temp'].value is 999.99:
-            logger.error('Failed to read DS18B20 sensor')
-
-
-    #-------------------------------------------------------------------
-    # Display data on screen
-    #-------------------------------------------------------------------
-    print(sensors)
 
 
     #-------------------------------------------------------------------
     # Add data to RRD
     #-------------------------------------------------------------------
-    if rrd.update_rrd_file(sensors) = 'OK':
+    logger.debug('Update time = {update_time}'.format(update_time= 'N'))#rrd.next_update()))
+    logger.debug([v for (k, v) in sorted(sensor_value.items()) if v != 'U'])
+    
+    result = rrd.update_file(timestamp= 'N',
+            ds_name= [k for (k, v) in sorted(sensor_value.items()) if v!='U'],
+            values= [v for (k, v) in sorted(sensor_value.items()) if v != 'U'])
+
+    if result == 'OK':
         logger.info('Update RRD file OK')
     else:
-        logger.error('Failed to update RRD file ({error})'.format(
-            error=result))
+        logger.error('Failed to update RRD file ({value_error})'.format(
+            value_error=result))
+        logger.error(sensor_value)
 
 
     #-------------------------------------------------------------------
     # Prepare to end script
     #-------------------------------------------------------------------
-    #Stop processes
-    DHT22_sensor.cancel()
     logger.info('--- Read Sensors Finished ---')
     sys.exit()
 
+        
 
 #===============================================================================
 # BOILER PLATE
 #===============================================================================
 if __name__=='__main__':
-    sys.exit(get_data())
+    sys.exit(main())

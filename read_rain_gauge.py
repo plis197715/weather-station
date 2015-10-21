@@ -26,7 +26,16 @@
 
 #!/usr/bin/env python
 
-'''Gathers data from rain gauge'''
+'''Counts ticks from the reed switch of a rain gauge via an interrupt driven
+    callback function. This count is stored in the precipiattion rate variable
+    and is reset every loop.
+    Script loops until stopped by the user.
+    Data is stored to an RRD file at the update time pulled from the RRD file.
+    Current precipitation accumulated value is pulled from the RRD file and 
+    incremented by the counted ticks from the rain gauge.
+    At midnight, the precipitation accumulated value is reset.
+    If there is no RRD file or its set up is different from requirement, the 
+    script will abort.'''
 
 
 #===============================================================================
@@ -34,20 +43,26 @@
 #===============================================================================
 
 # Standard Library
-import os
 import sys
 import threading
 import time
 import datetime
-import logging
+import collections
 
 # Third party modules
-import rrdtool
 import pigpio
 
 # Application modules
+import log
+import logging
 import settings as s
 import rrd_tools
+
+
+#===============================================================================
+# GLOBAL VARIABLES
+#===============================================================================
+last_rising_edge = None
 
 
 #===============================================================================
@@ -59,6 +74,8 @@ def count_rain_ticks(gpio, level, tick):
     
     global precip_tick_count
     global last_rising_edge
+
+    logger = logging.getLogger('root')
     
     pulse = False
     
@@ -73,6 +90,8 @@ def count_rain_ticks(gpio, level, tick):
     if pulse:
         last_rising_edge = tick  
         precip_tick_count += 1
+        logger.debug('Precip tick count : {tick}'.format(tick= precip_tick_count))
+        
  
 
 #===============================================================================
@@ -83,81 +102,68 @@ def main():
     '''Entry point for script'''
 
     global precip_tick_count
-    global last_rising_edge
-
-    last_rising_edge = None
+    global precip_accu
+ 
+    precip_tick_count = 0
+    precip_accu       = 0
 
 
     #---------------------------------------------------------------------------
     # SET UP LOGGER
     #---------------------------------------------------------------------------
-    log_file = 'logs/read_rain_gauge.log'
+    logger = log.setup('root', '/home/pi/weather/logs/read_rain_gauge.log')
 
-    if '/' in log_file:
-        if not os.path.exists(log_file[:log_file.rindex('/')]):
-            os.makedirs(log_file[:log_file.rindex('/')])
-
-    logging.basicConfig(filename='{directory}/{file_name}'.format(
-                                    directory=log_directory, 
-                                    file_name=log_file), 
-                        level=logging.INFO,
-                        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s')
-    logger = logging.getLogger(__name__)
     logger.info('--- Read Rain Gauge Script Started ---')
-    script_start_time = datetime.datetime.now()
-    logger.info('Script start time: {start_time}'.format(
-        start_time=script_start_time.strftime('%Y-%m-%d %H:%M:%S'))) 
-
+    
 
     #---------------------------------------------------------------------------
     # LOAD DRIVERS
     #---------------------------------------------------------------------------
     try:
         pi = pigpio.pi()
+
     except ValueError:
-        logger.error('Failed to connect to PIGPIO ({error}). Exiting...'.format(
-            error=ValueError))
+        logger.critical('Failed to connect to PIGPIO ({error_v}). Exiting...'.format(
+            error_v=ValueError))
         sys.exit()
 
 
     #---------------------------------------------------------------------------
-    # SET UP RRD DATA AND TOOL
+    # CHECK RRD FILE
     #---------------------------------------------------------------------------
-    sensors = data_sources(s.SENSOR_SET)
+    try:
+        rrd = rrd_tools.RrdFile(s.RRDTOOL_RRD_FILE)
+        
+        if sorted(rrd.ds_list()) != sorted(list(s.SENSOR_SET.keys())):
+            logger.error('Data sources in RRD file does not match set up.')
+            logger.error(rrd.ds_list())
+            logger.error(list(s.SENSOR_SET.keys()))
+            logger.error('Exiting...')
+            sys.exit()
+        else:
+            logger.info('RRD fetch successful.')
 
-    #Create RRD files if none exist
-    if not os.path.exists(s.RRDTOOL_RRD_FILE):
-        logger.info('RRD file not found')
-        logger.info('Exiting...')
-        sys.exit()
-    else:
-        #Fetch data from round robin database & extract next entry time to sync loop
-        logger.info('RRD file found')
-        rrd = rrd_file(s.RRDTOOL_RRD_FILE)
-
-        sensors = dict.fromkeys(rrd.get_data_sources(), 'U')
-        print(sensors)
-        next_reading  = data_values[0][1]
-        logger.info('RRD FETCH: Next sensor reading at {time}'.format(
-            time=time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(next_reading))))
-
-
-    #---------------------------------------------------------------------------
-    # SET UP RAIN SENSOR
-    #---------------------------------------------------------------------------
-    if not sensors.ds['precip_acc'].enable:
+    except ValueError:
+        logger.critical('RRD fetch failed. Exiting...')
         sys.exit()
 
 
-    #Set up inital values for variables
-    precip_tick_count = 0
-    precip_accu       = 0
-    last_data_values  = []
+    #---------------------------------------------------------------------------
+    # SET UP SENSOR VARIABLES
+    #---------------------------------------------------------------------------
+    sensor_value = {x: 'U' for x in s.SENSOR_SET}
+
+    ss = collections.namedtuple('ss', 'enable ref unit min max type')
+    sensor = {k: ss(*s.SENSOR_SET[k]) for k in s.SENSOR_SET}
     
-    #Set up rain gauge hardware
-    pi.set_mode(sensors.ds['precip_acc'].pin, pigpio.INPUT)
-    rain_gauge = pi.callback(sensors.ds['precip_acc'].pin, 
-                                pigpio.FALLING_EDGE, 
+    logger.debug(sensor_value)
+
+
+    #---------------------------------------------------------------------------
+    # SET UP RAIN SENSOR HARDWARE
+    #---------------------------------------------------------------------------
+    pi.set_mode(sensor['precip_acc'].ref, pigpio.INPUT)
+    rain_gauge = pi.callback(sensor['precip_acc'].ref, pigpio.FALLING_EDGE, 
                                 count_rain_ticks)
 
 
@@ -170,6 +176,10 @@ def main():
             #-------------------------------------------------------------------
             # Delay to give update rate
             #-------------------------------------------------------------------
+            next_reading  = rrd.next_update()
+            logger.debug('Next sensor reading at {time}'.format(
+                time=time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(next_reading))))
+            
             sleep_length = next_reading - time.time()
             if sleep_length > 0:
                 time.sleep(sleep_length)
@@ -178,85 +188,98 @@ def main():
             #-------------------------------------------------------------------
             # Get loop start time
             #-------------------------------------------------------------------
-            loop_start_t = datetime.datetime.now()
+            loop_start = datetime.datetime.now()
             logger.info('Loop start time: {start_time}'.format(
-                start_time=loop_start_t.strftime('%Y-%m-%d %H:%M:%S')))
+                start_time=loop_start.strftime('%Y-%m-%d %H:%M:%S')))
 
 
             #-------------------------------------------------------------------
             # Get rain fall measurement
             #-------------------------------------------------------------------
-            data_values = []
-            last_precip_accu = None
-            tuple_location = 0   
-
-            #Calculate precip rate and reset it
-            sensors['precip_rate'].value = precip_tick_count * s.PRECIP_TICK_MEASURE
+            sensor_value['precip_acc'] = 0.000000
+            sensor_value['precip_rate'] = precip_tick_count * s.PRECIP_TICK_MEASURE
             precip_tick_count = 0.000000
-            logger.info('Pricipitation counter RESET')
+            logger.debug('Precip tick counter RESET')
             
-            #Sync task time to rrd database
-            next_reading  = rrd.get_next_update_time()
-            logger.info('Next sensor reading at {time}'.format(
-                time=time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(next_reading))))
-            
-            #Extract time and precip acc value from fetched tuple
-            data_values = rrdtool.fetch(self.filename, 'LAST', 
-                                        '-s', str(self.step * -2))
-            data_location = data_values[1].index('precip_acc')
-            while last_precip_accu is None and -tuple_location < len(data_values[2]):
-                tuple_location -= 1
-                last_precip_accu = data_values[2][tuple_location][data_location]
-                
-            last_entry_t = data_values[0][1] + (tuple_location * s.UPDATE_RATE)
-            
-            #If no data present, set it to 0
-            if last_precip_accu is None:
-                last_precip_accu = 0.00
+
+            #If last entry was before midnight this moninng do not use accumulated
+            # precipitation value taken from round robin database
+            last_entry_time = rrd.last_update()
+
+            last_reset = loop_start.replace(hour=0, minute=0, second=0, microsecond=0)   
+            tdelta = datetime.datetime.fromtimestamp(last_entry_time) - last_reset
+            tdelta = tdelta.total_seconds()
+            logger.debug('last entry = {last_entry}'.format(last_entry= last_entry_time))
+            logger.debug('last_reset = {last_reset_t}'.format(last_reset_t= last_reset))
+            logger.debug('tdelta = {delta_t}'.format(delta_t= tdelta))
+
+            if tdelta >= 0.00:
+                #Fetch data from round robin database
+                try:
+                    rrd_data = []
+                    rrd_data = rrd.fetch(start=last_entry_time-300, end=last_entry_time)
+                    rt = collections.namedtuple( 'rt', 'start end step ds value')
+                    rrd_data = rt(rrd_data[0][0], rrd_data[0][1], rrd_data[0][2], 
+                                            rrd_data[1], rrd_data[2])
+
+                    sensor_value['precip_acc'] = float(
+                        rrd_data.value[len(rrd_data.value)-2][rrd_data.ds.index('precip_acc')] or 0)
                     
-            #Previous reset time
-            last_reset = loop_start_t.replace(hour=0, minute=0, second=0, 
-                                                    microsecond=0)
+                    logger.info('Data fetched from RRD file')
 
-            #Reset precip acc    
-            t_since_last_reset = (loop_start_t - last_reset).total_seconds()
-            last_feed_entry_t = time.mktime(loop_start_t.timetuple()) - last_entry_t
-            if last_feed_entry_t > t_since_last_reset:
-                sensors['precip_acc'].value = 0.00
-                logger.info('Pricipitation accumulated RESET')
-            else:
-                sensors['precip_acc'].value = last_precip_accu
-            
+                except ValueError, e:
+                    logger.error('Could not fetch data from RRD file!')
+
+
             #Add previous precip. acc'ed value to current precip. rate
-            sensors['precip_acc'].value += sensors['precip_rate'].value
+            sensor_value['precip_acc'] += sensor_value['precip_rate']
 
+
+            #Log values
+            logger.info('Precip_acc:  {precip_acc}'.format(
+                                        precip_acc= sensor_value['precip_acc']))
+            logger.info('Precip_rate: {precip_rate}'.format(
+                                        precip_rate= sensor_value['precip_rate']))
+                
 
             #-------------------------------------------------------------------
             # Add data to RRD
             #-------------------------------------------------------------------
-            result = rrd.update_rrd_file(sensors)
+            logger.debug('Update time = {update_time}'.format(update_time= 'N'))#rrd.next_update()))
+            logger.debug([v for (k, v) in sorted(sensor_value.items()) if v != 'U'])
+            
+            result = rrd.update_file(timestamp= 'N',
+                ds_name= [k for (k, v) in sorted(sensor_value.items()) if v!='U'],
+                values= [v for (k, v) in sorted(sensor_value.items()) if v != 'U'])
 
-            if result = 'OK':
+            if result == 'OK':
                 logger.info('Update RRD file OK')
             else:
                 logger.error('Failed to update RRD file ({value_error})'.format(
                     value_error=result))
+                logger.error(sensor_value)
 
 
     #---------------------------------------------------------------------------
     # User exit command
     #---------------------------------------------------------------------------
     except KeyboardInterrupt:
-
         logger.info('USER ACTION: End command')
-        
-        if screen_output:
-            print('\nExiting program...')
-        
-        #Stop processes
-        rain_gauge.cancel()
-        
-        logger.info('--- Finished ---')
+
+
+    #---------------------------------------------------------------------------
+    # Other error captured
+    #---------------------------------------------------------------------------
+    except Exception, e:
+        logger.error('Script Error', exc_info=True)
+
+
+    #---------------------------------------------------------------------------
+    # Stop processes
+    #---------------------------------------------------------------------------
+    finally:
+        rain_gauge.cancel()       
+        logger.info('--- Read Rain Gauge Finished ---')
         
 
 #===============================================================================

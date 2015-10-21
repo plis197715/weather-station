@@ -55,8 +55,7 @@ W1_DEVICE_PATH       = '/sys/bus/w1/devices/'
 DEBOUNCE_MICROS      = 0.250 #seconds
 
 # --- RRDTool set up ---
-RRDTOOL_RRD_DIR      = 'data'
-RRDTOOL_RRD_FILE     = 'weather_data.rrd'
+RRDTOOL_RRD_FILE     = '/home/pi/weather/data/weather_data.rrd'
 RRDTOOL_HEARTBEAT    = 2 # multiplier
 
 # Consolidation type, Resolution (minutes), Recording Period (days)
