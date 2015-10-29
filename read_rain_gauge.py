@@ -66,6 +66,13 @@ last_rising_edge = None
 
 
 #===============================================================================
+# FLOAT COMPARISON
+#===============================================================================
+def approx_equal(a, b, tol=0.0001):
+     return abs(a - b) < tol
+
+
+#===============================================================================
 # EDGE CALLBACK FUNCTION TO COUNT RAIN TICKS
 #===============================================================================
 def count_rain_ticks(gpio, level, tick):
@@ -122,9 +129,9 @@ def main():
     try:
         pi = pigpio.pi()
 
-    except ValueError:
-        logger.critical('Failed to connect to PIGPIO ({error_v}). Exiting...'.format(
-            error_v=ValueError))
+    except Exception, e:
+        logger.error('Failed to connect to PIGPIO ({error_v}). Exiting...'.format(
+            error_v=e))
         sys.exit()
 
 
@@ -143,8 +150,9 @@ def main():
         else:
             logger.info('RRD fetch successful.')
 
-    except ValueError:
-        logger.critical('RRD fetch failed. Exiting...')
+    except Exception, e:
+        logger.error('RRD fetch failed ({error_v}). Exiting...'.format(
+            error_v=e))
         sys.exit()
 
 
@@ -188,7 +196,7 @@ def main():
             #-------------------------------------------------------------------
             # Get loop start time
             #-------------------------------------------------------------------
-            loop_start = datetime.datetime.now()
+            loop_start = datetime.datetime.utcnow()
             logger.info('Loop start time: {start_time}'.format(
                 start_time=loop_start.strftime('%Y-%m-%d %H:%M:%S')))
 
@@ -196,9 +204,9 @@ def main():
             #-------------------------------------------------------------------
             # Get rain fall measurement
             #-------------------------------------------------------------------
-            sensor_value['precip_acc'] = 0.000000
+            sensor_value['precip_acc'] = 0.00
             sensor_value['precip_rate'] = precip_tick_count * s.PRECIP_TICK_MEASURE
-            precip_tick_count = 0.000000
+            precip_tick_count = 0.00
             logger.debug('Precip tick counter RESET')
             
 
@@ -207,34 +215,62 @@ def main():
             last_entry_time = rrd.last_update()
 
             last_reset = loop_start.replace(hour=0, minute=0, second=0, microsecond=0)   
-            tdelta = datetime.datetime.fromtimestamp(last_entry_time) - last_reset
-            tdelta = tdelta.total_seconds()
-            logger.debug('last entry = {last_entry}'.format(last_entry= last_entry_time))
-            logger.debug('last_reset = {last_reset_t}'.format(last_reset_t= last_reset))
+            last_reset = int(time.mktime(last_reset.utctimetuple()))
+            tdelta = last_entry_time - last_reset
+
+            logger.debug('last entry = {l_entry}'.format(l_entry= last_entry_time))
+            logger.debug('last_reset = {l_reset_t}'.format(l_reset_t= last_reset))
             logger.debug('tdelta = {delta_t}'.format(delta_t= tdelta))
 
             if tdelta >= 0.00:
-                #Fetch data from round robin database
                 try:
-                    rrd_data = []
-                    rrd_data = rrd.fetch(start=last_entry_time-300, end=last_entry_time)
+                    #Fetch today's data from round robin database
+                    data = []
+                    data = rrd.fetch(start=last_reset, 
+                                     end=last_entry_time)
+
                     rt = collections.namedtuple( 'rt', 'start end step ds value')
-                    rrd_data = rt(rrd_data[0][0], rrd_data[0][1], rrd_data[0][2], 
-                                            rrd_data[1], rrd_data[2])
+                    data = rt(data[0][0], data[0][1], data[0][2], 
+                                            data[1], data[2])
 
+
+                    #Create list with today's precip rate values
+                    loc = data.ds.index('precip_rate')
+                    todays_p_rate = [data.value[i][loc] for i in range(0, len(data.value)-1)]
+
+                    logger.debug('Todays p rate')
+                    logger.debug(todays_p_rate)
+
+                    #Get second to last entry as last entry is next update
                     sensor_value['precip_acc'] = float(
-                        rrd_data.value[len(rrd_data.value)-2][rrd_data.ds.index('precip_acc')] or 0)
+                        data.value[len(data.value)-2][data.ds.index('precip_acc')] or 0)
+                                       
+                    #If any values missing from today, prevent accumulation
+                    if None in todays_p_rate:
+                        sensor_value['precip_acc'] = 'U'
+                        logger.error('Values missing in todays precip rate')
+
+                    elif approx_equal(sum(todays_p_rate), sensor_value['precip_acc']):
+                        logger.debug('Fetched p acc value:  {p_acc}'.format(
+                                        p_acc= sensor_value['precip_acc']))
+                        logger.debug('Sum of todays Precip_rate: {p_rate}'.format(
+                                        p_rate= sum(todays_p_rate)))
+                        sensor_value['precip_acc'] = 'U'
+                        logger.error('Lastest precip acc value does not much summation of precip rates')
                     
-                    logger.info('Data fetched from RRD file')
+                    else:
+                        #Add previous precip. acc'ed value to current precip. rate
+                        sensor_value['precip_acc'] += sensor_value['precip_rate']
 
-                except ValueError, e:
-                    logger.error('Could not fetch data from RRD file!')
+                except Exception, e:
+                    logger.error('RRD fetch failed ({error_v}). Exiting...'.format(
+                        error_v=e))
 
 
-            #Add previous precip. acc'ed value to current precip. rate
-            sensor_value['precip_acc'] += sensor_value['precip_rate']
-
-
+            #Round values to 2 decimal places
+            sensor_value['precip_rate'] = float('{0:.2f}'.format(sensor_value['precip_rate']))
+            sensor_value['precip_acc'] = float('{0:.2f}'.format(sensor_value['precip_acc'])
+            
             #Log values
             logger.info('Precip_acc:  {precip_acc}'.format(
                                         precip_acc= sensor_value['precip_acc']))

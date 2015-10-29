@@ -78,9 +78,9 @@ def main():
     try:
         pi = pigpio.pi()
 
-    except ValueError:
+    except Exception, e:
         logger.error('Failed to connect to PIGPIO ({error_v}). Exiting...'.format(
-            error_v=ValueError))
+            error_v=e))
         sys.exit()
 
 
@@ -99,8 +99,9 @@ def main():
         else:
             logger.info('RRD fetch successful')
 
-    except ValueError:
-        logger.error('RRD fetch failed. Exiting...')
+    except Exception, e:
+        logger.error('RRD fetch failed ({error_v}). Exiting...'.format(
+            error_v=e))
         sys.exit()
 
 
@@ -165,9 +166,9 @@ def main():
             else:
                 logger.info('Reading value from DS18B20 sensor... OK')
 
-        except ValueError:
+        except Exception, e:
             logger.warning('Failed to read DS18B20 ({value_error})'.format(
-                value_error=ValueError))
+                value_error=e), exc_info=True)
         
 
 
